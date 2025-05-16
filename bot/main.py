@@ -31,7 +31,31 @@ async def on_ready():
     except redis.exceptions.ConnectionError as e:
         logging.error(f"❌ Redis Connection Fail: {e}")
 
-    await bot.tree.sync()
+    # await bot.load_extension("bot.cogs.messaging")
+    await bot.load_extension("bot.cogs.link_fixer")
+
+    guild_id_to_sync = "1188104401093668866"  # 將這裡替換為你的伺服器 ID
+    guild = bot.get_guild(guild_id_to_sync)
+    if guild:
+        try:
+            commands = await bot.tree.sync(guild=guild)
+            logger.info(
+                f"✅ 已在伺服器 {guild.name} ({guild.id}) 強制同步 {len(commands)} 個指令。"
+            )
+        except discord.errors.Forbidden:
+            logger.error(
+                f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生 Forbidden 錯誤。請檢查 Bot 是否擁有 '應用程式指令' 權限。"
+            )
+        except Exception as e:
+            logger.error(
+                f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生錯誤：{e}"
+            )
+    else:
+        try:
+            commands = await bot.tree.sync()
+            logger.info(f"✅ 已進行全域指令同步 {len(commands)} 個指令。")
+        except Exception as e:
+            logger.error(f"❌ 全域指令同步時發生錯誤：{e}")
 
 
 @bot.event

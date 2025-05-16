@@ -1,5 +1,10 @@
 # Sakura
 
+## Features
+
+- **LinkFix:** You can use the `linkfix` command to convert link with [FxEmbed]("https://github.com/FxEmbed/FxEmbed").
+- **AutoLinkFix:** You can enable this features to automatically convert links to [FxEmbed]("https://github.com/FxEmbed/FxEmbed") links.
+
 ## Getting Started
 
 1. **Prerequisites:**
@@ -31,8 +36,17 @@
 
 4. **Configure Environment Variables:**
 
-   - Copy the `.env.example` file and rename it to `.env`.
+   - Copy the `example.env` file and rename it to `.env`.
    - Fill in your Discord Bot Token, Redis connection details, and Bot Owner IDs.
+   - Example `.env` file:
+
+     ```env
+     DISCORD_TOKEN=your_discord_token
+     REDIS_HOST=localhost
+     REDIS_PORT=6379
+     REDIS_PASSWORD=your_redis_password
+     BOT_OWNER_IDS=1234567890,0987654321
+     ```
 
 5. **Run the Bot:**
 

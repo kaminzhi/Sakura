@@ -1,8 +1,15 @@
+import discord
 from discord.ext import commands
 from discord import app_commands
 from .redis_manager import get_redis_client
+import os
+from dotenv import load_dotenv
+
 
 redis_client = get_redis_client()
+
+load_dotenv()
+BOT_OWNER_IDS = [int(owner_id) for owner_id in os.getenv("BOT_OWNER_IDS", "").split(",")]
 
 
 def is_guild_admin():
