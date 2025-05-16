@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import re
+import logging
 from ..utils import redis_manager
 from ..utils import checks
 
@@ -45,8 +46,8 @@ class LinkFixerCog(commands.Cog):
             fixed_url = url.replace("twitter.com", "fxtwitter.com").replace(
                 "x.com", "fixupx.com"
             )
-        elif re.search(r"blueskyweb\.xyz", url):
-            fixed_url = url.replace("blueskyweb.xyz", "fxbluesky.com")
+        elif re.search(r"bsky\.app", url):
+            fixed_url = url.replace("bsky.app", "fxbsky.app")
         else:
             await interaction.response.send_message(
                 "❌ 這個連結不是 Twitter/X 或 Bluesky 的連結。", ephemeral=True
@@ -64,7 +65,8 @@ class LinkFixerCog(commands.Cog):
         if await self.is_auto_fix_enabled(message.guild.id):
             content = message.content
             urls = re.findall(
-                r"(https?://(?:www\.)?(?:twitter\.com|x\.com)/[^\s]+)|(https?://(?:www\.)?blueskyweb\.xyz/profile/[^\s]+)",
+                r"(https?://(?:www\.)?(?:twitter\.com|x\.com)/[^\s]+)|"
+                r"(https?://(?:www\.)?bsky\.app/profile/[^\s]+(?:/post/[^\s]+)?)",
                 content,
             )
             if not urls:
@@ -78,8 +80,8 @@ class LinkFixerCog(commands.Cog):
                         "x.com", "fixupx.com"
                     )
                     fixed_content = fixed_content.replace(url, fixed_url)
-                elif re.search(r"blueskyweb\.xyz", url):
-                    fixed_url = url.replace("blueskyweb.xyz", "fxbluesky.com")
+                elif re.search(r"bsky\.app", url):
+                    fixed_url = url.replace("bsky.app", "fxbsky.app")
                     fixed_content = fixed_content.replace(url, fixed_url)
 
             if fixed_content != content:

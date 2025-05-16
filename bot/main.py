@@ -33,6 +33,7 @@ async def on_ready():
 
     # await bot.load_extension("bot.cogs.messaging")
     await bot.load_extension("bot.cogs.link_fixer")
+    await bot.load_extension("bot.cogs.welcome")
 
     guild_id_to_sync = "1188104401093668866"  # 將這裡替換為你的伺服器 ID
     guild = bot.get_guild(guild_id_to_sync)
