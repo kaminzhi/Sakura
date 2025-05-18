@@ -1,0 +1,30 @@
+services:
+  sakura:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: sakura
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./bot:/app/bot
+    depends_on:
+      - sakuradb
+
+  sakuradb:
+    image: mongo:latest
+    container_name: sakuradb
+    hostname: sakuradb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_INITDB_DATABASE: sakuraDB # 可選：設定初始資料庫名稱
+    volumes:
+      - ./sakuradb/db_data:/data/db
+
+volumes:
+  db_data:

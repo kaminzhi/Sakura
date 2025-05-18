@@ -1,0 +1,34 @@
+# Python related
+__pycache__/
+*.pyc
+*.pyd
+.python-version
+env/
+venv/
+*.egg-info/
+
+# Environment file (ensure .env is not committed)
+.env
+
+# Docker related (although .dockerignore will handle this, no need to track locally)
+docker-compose.override.yml
+docker-compose.yml.backup
+Dockerfile.backup
+
+# IDE and editor related
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sqlite3
+
+# Operating system related
+.DS_Store
+Thumbs.db
+
+# Log files (if any)
+*.log
+logs/
+
+# Data folder (if you don't want to track changes inside, depends on your needs)
+data/  # If your data/ is for runtime downloads or generated data, not original assets

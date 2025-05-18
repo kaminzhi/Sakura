@@ -1,0 +1,29 @@
+# Git related (no need to copy to the Docker image)
+.git
+.gitignore
+
+# Python related (dependencies will be reinstalled in the Docker image)
+env/
+venv/
+*.pyc
+*.pyd
+*.egg-info/
+
+# Docker related (no need to include Docker files in the image)
+.dockerignore
+docker-compose*
+Dockerfile
+
+# Local development related (no need in the production image)
+__pycache__/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data folder (if data/ contains large or unnecessary files for the image)
+data/welcome_images/* # If you only want to copy specific parts for the image
+data/* # If the entire data directory is not needed in the image (depends on your needs)
+
+*.log
+logs/
