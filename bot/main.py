@@ -30,9 +30,10 @@ async def on_ready():
         logging.error(f"❌ MongoDB Connection Fail: {e}")
 
     # await bot.load_extension("bot.cogs.messaging")
-    # await bot.load_extension("bot.cogs.link_fixer")
+    await bot.load_extension("bot.cogs.link_fixer")
     # await bot.load_extension("bot.cogs.welcome")
     await bot.load_extension("bot.cogs.ping")
+    await bot.load_extension("bot.cogs.linkfix_settings")
 
     guild = bot.get_guild(SERVER_GUILD_ID)
     if guild:

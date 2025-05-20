@@ -1,38 +1,74 @@
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
+from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
-import logging
-
-logger = logging.getLogger(__name__)
 
 load_dotenv()
-MONGODB_URI = os.getenv("MONGODB_URI")
-MONGO_DATABASE_NAME = "sakuradatabase"  # 你的資料庫名稱
-
-mongo_client = AsyncIOMotorClient(MONGODB_URI)
-db = mongo_client[MONGO_DATABASE_NAME]  # 使用你定義的變數
-guilds_collection = db["guilds"]
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
+mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
+config_collection = mongo_client[MONGO_DB_NAME]["guild_configs"]
 
 
-async def get_guild_data(guild_id: int) -> dict or None:
-    logger.debug(f"Getting data for guild: {guild_id}")
-    return await guilds_collection.find_one({"guild_id": guild_id})
+DEFAULT_CONFIG = {
+    "auto_link_fix": True,
+    "platforms": {
+        "Twitter/X": True,
+        "Bluesky": True,
+        "Instagram": True,
+        "Youtube": True,
+        "Reddit": True,
+        "Pixiv": True,
+        "Spotify": True,
+        "Bilibili": True,
+        "Thread": True,
+        "Mastodon": True,
+        "DeviantArt": True,
+        "Tiktok": True,
+        "Twitch": True,
+    },
+    "preserve_original_link": True,
+    "platform_replacements": {
+        "twitter.com": ["fxtwitter.com", "Twitter/X"],
+        "x.com": ["fixupx.com", "Twitter/X"],
+        "bsky.app": ["fxbsky.app", "Bluesky"],
+        "instagram.com": ["ddinstagram.com", "Instagram"],
+        "youtube.com": ["koutube.com", "Youtube"],
+        "youtu.be": ["koutube.com", "Youtube"],
+        "reddit.com": ["rxddit.com", "Reddit"],
+        "pixiv.net": ["phixiv.net", "Pixiv"],
+        "spotify.com": ["fxspotify.com", "Spotify"],
+        "bilibili.com": ["vxbilibili.com", "Bilibili"],
+        "threads.net": ["fixthread.com", "Thread"],
+        "mastodon.social": ["fxmastodon.net", "Mastodon"],
+        "deviantart.com": ["fixdeviantart.com", "DeviantArt"],
+        "tiktok.com": ["fixtiktok.com", "Tiktok"],
+        "twitch.tv": ["fxtwitch.com", "Twitch"],
+    },
+}
 
 
-async def update_guild_data(guild_id: int, data: dict, upsert: bool = True):
-    logger.info(f"Updating data for guild: {guild_id} - {data}")
-    await guilds_collection.update_one(
-        {"guild_id": guild_id}, {"$set": data}, upsert=upsert
+async def get_guild_data(guild_id: int) -> dict:
+    doc = await config_collection.find_one({"guild_id": guild_id})
+    if not doc:
+        await config_collection.insert_one({"guild_id": guild_id, **DEFAULT_CONFIG})
+        return {"guild_id": guild_id, **DEFAULT_CONFIG}
+
+    updated = False
+    for key, val in DEFAULT_CONFIG.items():
+        if key not in doc:
+            doc[key] = val
+            updated = True
+        elif isinstance(val, dict):
+            for subkey, subval in val.items():
+                if subkey not in doc[key]:
+                    doc[key][subkey] = subval
+                    updated = True
+
+    if updated:
+        await config_collection.update_one({"guild_id": guild_id}, {"$set": doc})
+    return doc
+
+
+async def update_guild_data(guild_id: int, data: dict):
+    await config_collection.update_one(
+        {"guild_id": guild_id}, {"$set": data}, upsert=True
     )
-
-
-async def push_guild_data(guild_id: int, key: str, value):
-    logger.info(f"Pushing data for guild {guild_id}, key {key}: {value}")
-    await guilds_collection.update_one(
-        {"guild_id": guild_id}, {"$push": {key: value}}, upsert=True
-    )
-
-
-async def pull_guild_data(guild_id: int, key: str, value):
-    logger.info(f"Pulling data for guild {guild_id}, key {key}: {value}")
-    await guilds_collection.update_one({"guild_id": guild_id}, {"$pull": {key: value}})
