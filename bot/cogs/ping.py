@@ -1,39 +1,57 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
-from discord.ui import Button, View
+import random
 
 
-class PingCog(commands.Cog):
+class Ping(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @discord.slash_command(
-        name="cog_ping_button", description="Embed with button below text"
+    @app_commands.command(
+        name="ping", description="用超中二方式測試機器人延遲（有夠重要）"
     )
-    async def cog_ping_button(self, ctx: discord.ApplicationContext):
+    async def ping(self, interaction: discord.Interaction):
+        latency = self.bot.latency * 1000
+
+        if latency < 100:
+            status = f"延遲為`{latency:.2f}`ms"
+            responses = [
+                f"Wow, 比你打開冰箱還快！",
+                f"你是不是住在我隔壁",
+                f"這速度我都懷疑你是不是用光纖直連的！",
+            ]
+        elif latency < 300:
+            status = f"延遲為`{latency:.2f}ms`"
+            responses = [
+                f"穩穩的，感覺像 4G...不是5G。",
+                f"中規中矩，至少沒爆炸。",
+                f"這延遲，還能接受。",
+            ]
+        else:
+            status = f"延遲為`{latency:.2f}ms`"
+            responses = [
+                f"爆ping拉, 卡的跟狗一樣。",
+                f"你這是從火星 ping 我嗎？",
+                f"嗯...這延遲有點像在打麻將，等了半天才出牌。",
+            ]
+
+        description = f"{status}\n{random.choice(responses)}"
+
         embed = discord.Embed(
-            title="Cog Pong!",
-            description="這個 Cog 運作正常！點擊下面的按鈕來做一些事情。",
-            color=discord.Color.green(),
+            title="🏓  Pong!",
+            description=description,
+            color=discord.Color.red()
+            if latency > 300
+            else (discord.Color.blue() if latency > 100 else discord.Color.green()),
+        )
+        embed.set_footer(
+            text=f"由 {self.bot.user.name} 提供服務",
+            icon_url=self.bot.user.display_avatar.url,
         )
 
-        # 創建一個 View 來包含按鈕
-        view = View()
-
-        # 創建一個按鈕
-        button = Button(label="點擊我！", style=discord.ButtonStyle.primary)
-
-        async def button_callback(interaction: discord.Interaction):
-            await interaction.response.send_message("你點擊了按鈕！", ephemeral=True)
-
-        button.callback = button_callback
-
-        # 將按鈕添加到 View
-        view.add_item(button)
-
-        # 回應包含 Embed 和 View 的訊息
-        await ctx.respond(embed=embed, view=view)
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(PingCog(bot))
+    await bot.add_cog(Ping(bot))

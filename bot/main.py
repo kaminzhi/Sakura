@@ -1,55 +1,61 @@
-import discord
-import os, logging
+import discord, logging
+from discord.ext import commands
+import os
 from dotenv import load_dotenv
-from bot.utils.database import mongo_client
+from .utils.database import mongo_client
 
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
 
 load_dotenv()
-TOKEN = os.getenv("DISCORD_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+SERVER_GUILD_ID = os.getenv("SERVER_GUILD_ID")
 
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 
-bot = discord.Bot(intents=intents)  # 如果你只使用斜線指令，不需要 command_prefix
-
-
-async def setup_hook():
-    for filename in os.listdir("./cogs"):
-        if filename.endswith(".py"):
-            try:
-                await bot.load_extension(f"cogs.{filename[:-3]}")
-                logger.info(f"Loaded extension: {filename[:-3]}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to load extension {filename[:-3]}.", exc_info=True
-                )
-
-
-bot.setup_hook = setup_hook
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 @bot.event
 async def on_ready():
-    logger.info(f"✅ Logged in as {bot.user.name} ({bot.user.id})")
-    logger.info(f"Discord.py version: {discord.__version__}")  # 檢查 py-cord 版本
-    if bot.is_ready():
-        logger.info("Bot is ready and connected to Discord.")
-    else:
-        logger.warning("Bot is not yet fully ready.")
-
+    logging.info(f"Logged in as {bot.user.name} ({bot.user.id})")
     try:
         await mongo_client.admin.command("ping")
-        logger.info("MongoDB connection is alive.")
+        logging.info("✅ MongoDB Connection Sucess!")
     except Exception as e:
-        logger.error("MongoDB connection failed.", exc_info=True)
+        logging.error(f"❌ MongoDB Connection Fail: {e}")
+
+    # await bot.load_extension("bot.cogs.messaging")
+    # await bot.load_extension("bot.cogs.link_fixer")
+    # await bot.load_extension("bot.cogs.welcome")
+    await bot.load_extension("bot.cogs.ping")
+
+    guild = bot.get_guild(SERVER_GUILD_ID)
+    if guild:
+        try:
+            commands = await bot.tree.sync(guild=guild)
+            logger.info(
+                f"✅ 已在伺服器 {guild.name} ({guild.id}) 強制同步 {len(commands)} 個指令。"
+            )
+        except discord.errors.Forbidden:
+            logger.error(
+                f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生 Forbidden 錯誤。請檢查 Bot 是否擁有 '應用程式指令' 權限。"
+            )
+        except Exception as e:
+            logger.error(
+                f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生錯誤：{e}"
+            )
+    else:
+        try:
+            commands = await bot.tree.sync()
+            logger.info(f"✅ 已進行全域指令同步 {len(commands)} 個指令。")
+        except Exception as e:
+            logger.error(f"❌ 全域指令同步時發生錯誤：{e}")
 
 
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    bot.run(BOT_TOKEN)

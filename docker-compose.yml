@@ -14,17 +14,20 @@ services:
 
   sakuradb:
     image: mongo:latest
+    # user: 1000:1000
     container_name: sakuradb
     hostname: sakuradb
     restart: always
     ports:
       - "27017:27017"
     environment:
+      # UID: 1000
+      # GID: 1000
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: admin
-      MONGO_INITDB_DATABASE: sakuraDB # 可選：設定初始資料庫名稱
+      MONGO_INITDB_DATABASE: sakuraDB
     volumes:
-      - ./sakuradb/db_data:/data/db
+      - ../sakuradb/db_data:/data/db
 
 volumes:
   db_data:
