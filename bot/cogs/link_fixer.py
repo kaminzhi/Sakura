@@ -40,17 +40,31 @@ class LinkFixer(commands.Cog):
             parsed = urlparse(url)
             domain = parsed.netloc.replace("www.", "")
 
-            if domain in platform_replacements:
-                replacement_domain, platform_label = platform_replacements[domain]
-                if platforms_config.get(platform_label, False):
-                    fixed_url = url.replace(domain, replacement_domain)
+            replacement_entry = platform_replacements.get(domain)
+            if not replacement_entry:
+                continue
 
-                    if preserve:
-                        replacement = f"[{platform_label}]({fixed_url})"
-                    else:
-                        replacement = fixed_url
+            if isinstance(replacement_entry, dict):
+                replacement_domain = replacement_entry.get("replacement")
+                platform_label = replacement_entry.get("label")
+                path_filter = replacement_entry.get("path_prefix")
+                if path_filter and not parsed.path.startswith(path_filter):
+                    continue
+            else:
+                replacement_domain, platform_label = replacement_entry
+                path_filter = None
 
-                    fixed_content = fixed_content.replace(url, replacement)
+            if not platforms_config.get(platform_label, False):
+                continue
+
+            fixed_url = url.replace(domain, replacement_domain)
+
+            if preserve:
+                replacement = f"[{platform_label}]({fixed_url})"
+            else:
+                replacement = fixed_url
+
+            fixed_content = fixed_content.replace(url, replacement)
 
         if fixed_content != message.content:
             webhook = None

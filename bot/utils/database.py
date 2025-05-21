@@ -7,9 +7,12 @@ MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 config_collection = mongo_client[MONGO_DB_NAME]["guild_configs"]
 
-
 DEFAULT_CONFIG = {
     "auto_link_fix": True,
+    "preserve_original_link": True,
+    "allowed_channels": [],
+    "allow_channels": [],
+    "allowed_roles": [],
     "platforms": {
         "Twitter/X": True,
         "Bluesky": True,
@@ -25,23 +28,26 @@ DEFAULT_CONFIG = {
         "Tiktok": True,
         "Twitch": True,
     },
-    "preserve_original_link": True,
     "platform_replacements": {
-        "twitter.com": ["fxtwitter.com", "Twitter/X"],
-        "x.com": ["fixupx.com", "Twitter/X"],
-        "bsky.app": ["fxbsky.app", "Bluesky"],
-        "instagram.com": ["ddinstagram.com", "Instagram"],
-        "youtube.com": ["koutube.com", "Youtube"],
-        "youtu.be": ["koutube.com", "Youtube"],
-        "reddit.com": ["rxddit.com", "Reddit"],
-        "pixiv.net": ["phixiv.net", "Pixiv"],
-        "spotify.com": ["fxspotify.com", "Spotify"],
-        "bilibili.com": ["vxbilibili.com", "Bilibili"],
-        "threads.net": ["fixthread.com", "Thread"],
-        "mastodon.social": ["fxmastodon.net", "Mastodon"],
-        "deviantart.com": ["fixdeviantart.com", "DeviantArt"],
-        "tiktok.com": ["fixtiktok.com", "Tiktok"],
-        "twitch.tv": ["fxtwitch.com", "Twitch"],
+        "twitter.com": {"replacement": "fxtwitter.com", "label": "Twitter/X"},
+        "x.com": {"replacement": "fixupx.com", "label": "Twitter/X"},
+        "bsky.app": {"replacement": "fxbsky.app", "label": "Bluesky"},
+        "instagram.com": {"replacement": "ddinstagram.com", "label": "Instagram"},
+        "youtube.com": {"replacement": "koutube.com", "label": "Youtube"},
+        "youtu.be": {"replacement": "koutube.com", "label": "Youtube"},
+        "reddit.com": {"replacement": "rxddit.com", "label": "Reddit"},
+        "pixiv.net": {"replacement": "phixiv.net", "label": "Pixiv"},
+        "open.spotify.com": {
+            "replacement": "open.fxspotify.com",
+            "label": "Spotify",
+            "path_prefix": "/track",
+        },
+        "bilibili.com": {"replacement": "vxbilibili.com", "label": "Bilibili"},
+        "threads.net": {"replacement": "fixthread.com", "label": "Thread"},
+        "mastodon.social": {"replacement": "fxmastodon.net", "label": "Mastodon"},
+        "deviantart.com": {"replacement": "fixdeviantart.com", "label": "DeviantArt"},
+        "tiktok.com": {"replacement": "fixtiktok.com", "label": "Tiktok"},
+        "twitch.tv": {"replacement": "fxtwitch.com", "label": "Twitch"},
     },
 }
 

@@ -13,11 +13,12 @@ class LinkFixSettings(commands.Cog):
     async def linkfix_settings(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
-        #        config = await get_guild_data(interaction.guild.id)
-        view = LinkFixSettingsView(guild_id=interaction.guild.id)
+        # config = await get_guild_data(interaction.guild.id)
+        view = LinkFixSettingsView(bot=self.bot, guild_id=interaction.guild.id)
         embed = await view.build_embed()
-        view.add_platform_select()
-
+        await view.add_platform_select()
+        await view.add_channel_select(interaction)
+        await view.add_role_select(interaction)
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 
