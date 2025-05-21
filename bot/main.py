@@ -61,32 +61,29 @@ async def on_ready():
 
     # Load your cogs (extensions) here.
     # await bot.load_extension("bot.cogs.messaging") # Uncomment if you need this
+    await bot.load_extension("bot.cogs.devpanel")
     await bot.load_extension("bot.cogs.link_fixer")
     # await bot.load_extension("bot.cogs.welcome") # Uncomment if you need this
     await bot.load_extension("bot.cogs.ping")
     await bot.load_extension("bot.cogs.linkfix_settings")
 
     guild = bot.get_guild(SERVER_GUILD_ID)
-    if guild:
-        try:
-            commands = await bot.tree.sync(guild=guild)
-            logger.info(
-                f"✅ 已在伺服器 {guild.name} ({guild.id}) 強制同步 {len(commands)} 個指令。"
-            )
-        except discord.errors.Forbidden:
-            logger.error(
-                f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生 Forbidden 錯誤。請檢查 Bot 是否擁有 '應用程式指令' 權限。"
-            )
-        except Exception as e:
-            logger.error(
-                f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生錯誤：{e}"
-            )
-    else:
-        try:
-            commands = await bot.tree.sync()
-            logger.info(f"✅ 已進行全域指令同步 {len(commands)} 個指令。")
-        except Exception as e:
-            logger.error(f"❌ 全域指令同步時發生錯誤：{e}")
+    try:
+        commands = await bot.tree.sync(guild=guild)
+        logger.info(
+            f"✅ 已在伺服器 {guild.name} ({guild.id}) 強制同步 {len(commands)} 個指令。"
+        )
+    except discord.errors.Forbidden:
+        logger.error(
+            f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生 Forbidden 錯誤。請檢查 Bot 是否擁有 '應用程式指令' 權限。"
+        )
+    except Exception as e:
+        logger.error(f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生錯誤：{e}")
+    try:
+        commands = await bot.tree.sync()
+        logger.info(f"✅ 已進行全域指令同步 {len(commands)} 個指令。")
+    except Exception as e:
+        logger.error(f"❌ 全域指令同步時發生錯誤：{e}")
 
     activity = get_activity(ACTIVITY_TYPE, ACTIVITY_TEXT, ACTIVITY_URL)
     status = status_map.get(BOT_STATUS)
