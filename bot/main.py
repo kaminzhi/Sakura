@@ -16,6 +16,7 @@ SERVER_GUILD_ID = int(os.getenv("SERVER_GUILD_ID", ""))
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
+intents.presences = True
 
 BOT_STATUS = os.getenv("BOT_STATUS", "online")
 ACTIVITY_TYPE = os.getenv("BOT_ACTIVITY_TYPE", None)
@@ -64,6 +65,7 @@ async def on_ready():
     await bot.load_extension("bot.cogs.devpanel")
     await bot.load_extension("bot.cogs.link_fixer")
     # await bot.load_extension("bot.cogs.welcome") # Uncomment if you need this
+    await bot.load_extension("bot.cogs.user_profile")
     await bot.load_extension("bot.cogs.ping")
     await bot.load_extension("bot.cogs.linkfix_settings")
 
