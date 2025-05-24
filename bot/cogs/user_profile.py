@@ -6,7 +6,7 @@ from datetime import datetime
 import io
 import warnings
 import aiohttp
-import logging
+import logging, asyncio
 
 from bot.utils.database import get_guild_data
 from bot.utils.image_processing import ImageProcessor

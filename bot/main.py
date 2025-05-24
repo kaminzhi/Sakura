@@ -62,15 +62,17 @@ async def on_ready():
 
     # Load your cogs (extensions) here.
     # await bot.load_extension("bot.cogs.messaging") # Uncomment if you need this
-    await bot.load_extension("bot.cogs.user_profile_panel")
+    # await bot.load_extension("bot.cogs.user_profile_panel")
     await bot.load_extension("bot.cogs.devpanel")
     await bot.load_extension("bot.cogs.link_fixer")
-    await bot.load_extension("bot.cogs.welcome_panel")
+    # await bot.load_extension("bot.cogs.welcome_panel")
     await bot.load_extension("bot.cogs.welcome")
     await bot.load_extension("bot.cogs.leave")
-    await bot.load_extension("bot.cogs.leave_panel")
-    await bot.load_extension("bot.cogs.settings_panel")
+    # await bot.load_extension("bot.cogs.leave_panel")
+    # await bot.load_extension("bot.cogs.settings_panel")
     # await bot.load_extension("bot.cogs.welcome") # Uncomment if you need this
+    await bot.load_extension("bot.cogs.settings_panel")
+    await bot.load_extension("bot.cogs.announcement_panel")
     await bot.load_extension("bot.cogs.user_profile")
     await bot.load_extension("bot.cogs.ping")
     await bot.load_extension("bot.cogs.linkfix_settings")
