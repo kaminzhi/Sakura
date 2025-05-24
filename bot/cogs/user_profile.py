@@ -2,192 +2,351 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
-import io
-import asyncio
+import io, warnings
+import asyncio, math
 import aiohttp
 import imageio.v3 as iio
-from PIL import Image, ImageSequence, ImageDraw
+from PIL import Image, ImageSequence, ImageDraw, ImageFont, ImageFilter
+import os, logging
 
-DEFAULT_BANNER_URL = "https://cdn.discordapp.com/attachments/1334764445775298590/1374903599771160709/tumblr_pdfsjua6ht1vhnny1o1_500_2.gif?ex=682fbe42&is=682e6cc2&hm=66132648328fd964ee7a5198560cb8b56ef5c72d48a5fcdf386a69663dab382b&"
+from bot.utils.database import get_guild_data
 
-# Banner size
+# --- Constants (unchanged) ---
 DISCORD_BANNER_WIDTH = 600
 DISCORD_BANNER_HEIGHT = 240
-
-# Avatar Size
-AVATAR_TARGET_SIZE = 160
+AVATAR_TARGET_SIZE = 140
 AVATAR_BORDER_WIDTH = 5
-AVATAR_BORDER_COLOR = (255, 255, 255)
+MISTY_LAYER_COLOR = (0, 0, 0, 80)
+FONT_DIR = "fonts"
+FONT_FALLBACK_PATHS = [
+    os.path.join(FONT_DIR, "cute.ttf"),
+    os.path.join(FONT_DIR, "setofont.ttf"),
+]
+USERNAME_FONT_SIZE = 65
+DISCRIMINATOR_FONT_SIZE = 40
+DATE_FONT_SIZE = 16
+TEXT_COLOR = (255, 255, 255, 255)
+LINE_SPACING = 15
+
+warnings.filterwarnings("ignore", category=UserWarning, module="imageio.plugins.pillow")
 
 
 class UserProfile(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.bot.session = aiohttp.ClientSession()
+        if not hasattr(self.bot, "session") or not isinstance(
+            self.bot.session, aiohttp.ClientSession
+        ):
+            self.bot.session = aiohttp.ClientSession()
+            print("Debug: Initialized bot.session within UserProfile cog.")
+
+        warnings.filterwarnings(
+            "ignore", category=UserWarning, module="imageio.plugins.pillow"
+        )
+
+        self.username_fonts = self._load_fonts(USERNAME_FONT_SIZE)
+        self.discriminator_fonts = self._load_fonts(DISCRIMINATOR_FONT_SIZE)
+        self.date_fonts = self._load_fonts(DATE_FONT_SIZE)
+
+    def _load_fonts(self, size: int):
+        fonts = []
+        for font_path in FONT_FALLBACK_PATHS:
+            try:
+                font = ImageFont.truetype(font_path, size)
+                fonts.append(font)
+            except IOError:
+                logging.error(
+                    f"Warning: Could not load font from {font_path}. Skipping."
+                )
+            except Exception as e:
+                logging.error(f"Error loading font {font_path}: {e}")
+
+        if not fonts:
+            logging.error("Error: No fonts loaded, falling back to default PIL font.")
+            fonts.append(ImageFont.load_default())
+        return fonts
+
+    def _get_font_for_char(self, char: str, font_list: list[ImageFont.FreeTypeFont]):
+        for font in font_list:
+            if font.getmask(char).getbbox():
+                return font
+        return font_list[0]
+
+    def _draw_text_with_fallback(
+        self,
+        draw: ImageDraw.ImageDraw,
+        xy: tuple,
+        text: str,
+        font_list: list[ImageFont.FreeTypeFont],
+        fill: tuple,
+    ):
+        x, y = xy
+        for char in text:
+            char_font = self._get_font_for_char(char, font_list)
+            draw.text((x, y), char, font=char_font, fill=fill)
+            char_width = char_font.getlength(char)
+            x += char_width
 
     async def cog_unload(self):
-        if self.bot.session:
+        if (
+            hasattr(self.bot, "session")
+            and self.bot.session
+            and self.bot.session._owner
+        ):
             await self.bot.session.close()
 
     async def download_image(self, url: str) -> io.BytesIO | None:
         if not url:
-            print("Debug: Download URL is empty or None.")
             return None
         try:
-            print(f"Debug: Attempting to download image from: {url}")
             async with self.bot.session.get(url) as response:
-                if response.status == 200:
-                    print(
-                        f"Debug: Successfully downloaded {url} (Status: {response.status})"
-                    )
-                    return io.BytesIO(await response.read())
-                else:
-                    print(
-                        f"Debug: Failed to download image from {url}: HTTP Status {response.status}"
-                    )
-                    return None
-        except aiohttp.ClientError as ce:
-            print(f"Debug: aiohttp ClientError downloading from {url}: {ce}")
-            return None
-        except Exception as e:
-            print(f"Debug: Generic Error downloading image from {url}: {e}")
+                response.raise_for_status()
+                image_bytes = await response.read()
+                return io.BytesIO(image_bytes)
+        except aiohttp.ClientError as e:
+            logging.error(f"Error downloading image from {url}: {e}")
             return None
 
-    def round_avatar_with_border(
-        self, avatar_img: Image.Image, size: int, border_width: int, border_color: tuple
+    def round_avatar(
+        self, avatar_img: Image.Image, size: int, border_width: int
     ) -> Image.Image:
-        """
-        Avatar border and round funtion, base on PIL Image
-        """
         avatar_resized = avatar_img.resize((size, size), Image.Resampling.LANCZOS)
 
-        mask = Image.new("L", (size, size), 0)
-        draw = ImageDraw.Draw(mask)
-        draw.ellipse((0, 0, size, size), fill=255)
+        mask_size = size * 4
+        mask = Image.new("L", (mask_size, mask_size), 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.ellipse((0, 0, mask_size, mask_size), fill=255)
+        mask = mask.resize((size, size), Image.Resampling.LANCZOS)
 
         rounded_avatar = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         rounded_avatar.paste(avatar_resized, (0, 0), mask)
 
-        border_size = size + border_width * 2
-        border_img = Image.new("RGBA", (border_size, border_size), (0, 0, 0, 0))
-        draw_border = ImageDraw.Draw(border_img)
+        shadow_spread = border_width * 2.0
+        shadow_blur_radius = border_width * 1.5
+        shadow_offset_x = border_width * 0.75
+        shadow_offset_y = border_width * 0.75
+        shadow_alpha = 150
 
-        draw_border.ellipse((0, 0, border_size, border_size), fill=border_color)
-        draw_border.ellipse(
-            (border_width, border_width, size + border_width, size + border_width),
-            fill=(0, 0, 0, 0),
+        canvas_size = int(size + shadow_spread * 2)
+        composite_image = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+
+        shadow_base_size = int(size + shadow_spread)
+
+        shadow_source_canvas_size = int(shadow_base_size + shadow_blur_radius * 2)
+        raw_shadow_source = Image.new(
+            "RGBA", (shadow_source_canvas_size, shadow_source_canvas_size), (0, 0, 0, 0)
+        )
+        draw_raw_shadow = ImageDraw.Draw(raw_shadow_source)
+
+        ellipse_x1 = (shadow_source_canvas_size - shadow_base_size) / 2
+        ellipse_y1 = (shadow_source_canvas_size - shadow_base_size) / 2
+        ellipse_x2 = ellipse_x1 + shadow_base_size
+        ellipse_y2 = ellipse_y1 + shadow_base_size
+
+        draw_raw_shadow.ellipse(
+            (ellipse_x1, ellipse_y1, ellipse_x2, ellipse_y2),
+            fill=(0, 0, 0, shadow_alpha),
         )
 
-        border_img.paste(rounded_avatar, (border_width, border_width), rounded_avatar)
-        return border_img
+        shadow_blurred = raw_shadow_source.filter(
+            ImageFilter.GaussianBlur(radius=shadow_blur_radius)
+        )
+
+        shadow_paste_x = int(
+            (canvas_size - shadow_source_canvas_size) / 2 + shadow_offset_x
+        )
+        shadow_paste_y = int(
+            (canvas_size - shadow_source_canvas_size) / 2 + shadow_offset_y
+        )
+
+        composite_image.paste(
+            shadow_blurred, (shadow_paste_x, shadow_paste_y), shadow_blurred
+        )
+
+        avatar_x_pos = int((canvas_size - size) / 2)
+        avatar_y_pos = int((canvas_size - size) / 2)
+
+        composite_image.paste(
+            rounded_avatar, (avatar_x_pos, avatar_y_pos), rounded_avatar
+        )
+
+        return composite_image
+
+    def _prepare_banner_frame(self, frame: Image.Image) -> Image.Image:
+        original_width, original_height = frame.size
+        target_aspect_ratio = DISCORD_BANNER_WIDTH / DISCORD_BANNER_HEIGHT
+        original_aspect_ratio = original_width / original_height
+
+        if original_aspect_ratio > target_aspect_ratio:
+            new_height = DISCORD_BANNER_HEIGHT
+            new_width = int(original_width * (new_height / original_height))
+            resized_frame = frame.resize(
+                (new_width, new_height), Image.Resampling.LANCZOS
+            )
+            left = (new_width - DISCORD_BANNER_WIDTH) / 2
+            top = 0
+            right = (new_width + DISCORD_BANNER_WIDTH) / 2
+            bottom = DISCORD_BANNER_HEIGHT
+            cropped_frame = resized_frame.crop((left, top, right, bottom))
+        else:
+            new_width = DISCORD_BANNER_WIDTH
+            new_height = int(original_height * (new_width / original_width))
+            resized_frame = frame.resize(
+                (new_width, new_height), Image.Resampling.LANCZOS
+            )
+            left = 0
+            top = (new_height - DISCORD_BANNER_HEIGHT) / 2
+            right = DISCORD_BANNER_WIDTH
+            bottom = (new_height + DISCORD_BANNER_HEIGHT) / 2
+            cropped_frame = resized_frame.crop((left, top, right, bottom))
+        return cropped_frame.convert("RGBA")
+
+    def _get_image_frames_and_durations(self, img: Image.Image):
+        frames = []
+        durations = []
+        for f in ImageSequence.Iterator(img):
+            frames.append(f.copy().convert("RGBA"))
+            duration = f.info.get("duration", 100)
+            try:
+                duration = int(duration)
+                if duration <= 0:
+                    duration = 100
+            except (ValueError, TypeError):
+                duration = 100
+            durations.append(duration)
+        return frames, durations
+
+    def _draw_profile_text(
+        self,
+        draw: ImageDraw.ImageDraw,
+        avatar_final_display_size: int,
+        text_x: int,
+        username_line_1: str,
+        username_line_2: str,
+        display_date_text: str,
+    ):
+        # Calculate text positions
+        sample_font_username1 = (
+            self.username_fonts[0] if self.username_fonts else ImageFont.load_default()
+        )
+        sample_font_username2 = (
+            self.discriminator_fonts[0]
+            if self.discriminator_fonts
+            else ImageFont.load_default()
+        )
+        sample_font_date = (
+            self.date_fonts[0] if self.date_fonts else ImageFont.load_default()
+        )
+
+        username_line_1_bbox = draw.textbbox(
+            (0, 0), username_line_1, font=sample_font_username1
+        )
+        username_line_1_height = username_line_1_bbox[3] - username_line_1_bbox[1]
+
+        username_line_2_bbox = draw.textbbox(
+            (0, 0), username_line_2, font=sample_font_username2
+        )
+        username_line_2_height = username_line_2_bbox[3] - username_line_2_bbox[1]
+
+        total_text_height = (
+            username_line_1_height + username_line_2_height + LINE_SPACING
+        )
+
+        username_y_1 = (DISCORD_BANNER_HEIGHT - avatar_final_display_size) // 2 + (
+            avatar_final_display_size - total_text_height
+        ) // 2
+        username_y_2 = username_y_1 + username_line_1_height + LINE_SPACING
+
+        # Draw username and discriminator
+        self._draw_text_with_fallback(
+            draw,
+            (text_x, username_y_1),
+            username_line_1,
+            self.username_fonts,
+            TEXT_COLOR,
+        )
+        self._draw_text_with_fallback(
+            draw,
+            (text_x, username_y_2),
+            username_line_2,
+            self.discriminator_fonts,
+            TEXT_COLOR,
+        )
+
+        # Draw date
+        date_text_bbox = draw.textbbox((0, 0), display_date_text, font=sample_font_date)
+        date_width = date_text_bbox[2] - date_text_bbox[0]
+        date_height = date_text_bbox[3] - date_text_bbox[1]
+
+        date_x = DISCORD_BANNER_WIDTH - date_width - 10
+        date_y = DISCORD_BANNER_HEIGHT - date_height - 10
+        self._draw_text_with_fallback(
+            draw,
+            (date_x, date_y),
+            display_date_text,
+            self.date_fonts,
+            TEXT_COLOR,
+        )
 
     def process_image_sync(
-        self, banner_data: io.BytesIO, avatar_data: io.BytesIO, member_name: str
+        self,
+        banner_data: io.BytesIO,
+        avatar_data: io.BytesIO,
+        target_user_display_name: str,
+        target_user_name: str,
+        target_user_discriminator: str,
+        created_at_date_str: str,
+        generate_gif: bool,
     ) -> io.BytesIO | None:
         try:
-            if banner_data:
-                banner_img = Image.open(banner_data)
-            else:
-                banner_img = Image.new(
-                    "RGB", (DISCORD_BANNER_WIDTH, DISCORD_BANNER_HEIGHT), color="black"
-                )
-                print("Debug: No banner_data provided, creating black fallback banner.")
-
-            if avatar_data:
-                avatar_img_raw = Image.open(avatar_data)
-            else:
-                # 備用方案：如果沒有頭像資料，則使用一個透明的頭像佔位符
-                avatar_img_raw = Image.new("RGBA", (128, 128), color=(0, 0, 0, 0))
-                print(
-                    "Debug: No avatar_data provided, creating transparent fallback avatar."
-                )
-
-            if avatar_img_raw.mode != "RGBA":
-                avatar_img_raw = avatar_img_raw.convert("RGBA")
+            banner_img = Image.open(banner_data)
+            avatar_img_raw = Image.open(avatar_data)
 
             output_frames = []
             frame_durations = []
-            is_output_gif = False
 
             banner_is_animated = (
                 hasattr(banner_img, "is_animated") and banner_img.is_animated
             )
             avatar_is_animated = (
-                hasattr(avatar_img_raw, "is_animated")
-                and avatar_img_raw.is_animated  # 注意這裡用 avatar_img_raw
-            )
-            print(
-                f"Debug: Banner is animated: {banner_is_animated}, Avatar is animated: {avatar_is_animated}"
+                hasattr(avatar_img_raw, "is_animated") and avatar_img_raw.is_animated
             )
 
-            final_avatar_display_size = AVATAR_TARGET_SIZE + AVATAR_BORDER_WIDTH * 2
+            should_generate_gif = generate_gif and (
+                banner_is_animated or avatar_is_animated
+            )
 
-            if banner_is_animated or avatar_is_animated:
-                is_output_gif = True
+            temp_processed_avatar = self.round_avatar(
+                avatar_img_raw.copy(), AVATAR_TARGET_SIZE, AVATAR_BORDER_WIDTH
+            )
+            avatar_final_display_size = temp_processed_avatar.width
 
-                banner_frames_raw = [
-                    f.copy().convert("RGBA") for f in ImageSequence.Iterator(banner_img)
-                ]
-                banner_frames = []
-                for frame in banner_frames_raw:
-                    original_width, original_height = frame.size
-                    target_aspect_ratio = DISCORD_BANNER_WIDTH / DISCORD_BANNER_HEIGHT
-                    original_aspect_ratio = original_width / original_height
+            misty_layer = Image.new(
+                "RGBA", (DISCORD_BANNER_WIDTH, DISCORD_BANNER_HEIGHT), MISTY_LAYER_COLOR
+            )
 
-                    if original_aspect_ratio > target_aspect_ratio:
-                        new_height = DISCORD_BANNER_HEIGHT
-                        new_width = int(original_width * (new_height / original_height))
-                        resized_frame = frame.resize(
-                            (new_width, new_height), Image.Resampling.LANCZOS
-                        )
+            username_line_1 = target_user_display_name
+            username_line_2 = (
+                f"@{target_user_name}"
+                if target_user_discriminator == "0"
+                else f"#{target_user_discriminator}"
+            )
+            display_date_text = created_at_date_str
 
-                        left = (new_width - DISCORD_BANNER_WIDTH) / 2
-                        top = 0
-                        right = (new_width + DISCORD_BANNER_WIDTH) / 2
-                        bottom = DISCORD_BANNER_HEIGHT
-                        cropped_frame = resized_frame.crop((left, top, right, bottom))
-                    else:
-                        new_width = DISCORD_BANNER_WIDTH
-                        new_height = int(original_height * (new_width / original_width))
-                        resized_frame = frame.resize(
-                            (new_width, new_height), Image.Resampling.LANCZOS
-                        )
-
-                        left = 0
-                        top = (new_height - DISCORD_BANNER_HEIGHT) / 2
-                        right = DISCORD_BANNER_WIDTH
-                        bottom = (new_height + DISCORD_BANNER_HEIGHT) / 2
-                        cropped_frame = resized_frame.crop((left, top, right, bottom))
-
-                    banner_frames.append(cropped_frame)
-
-                banner_durations = [
-                    banner_img.info.get("duration", 100) for _ in banner_frames_raw
-                ]
-                print(
-                    f"Debug: Banner (processed) has {len(banner_frames)} frames, durations: {banner_durations}"
+            if should_generate_gif:
+                banner_frames, banner_durations = self._get_image_frames_and_durations(
+                    banner_img
+                )
+                avatar_frames_raw, avatar_durations = (
+                    self._get_image_frames_and_durations(avatar_img_raw)
                 )
 
-                avatar_frames_raw = [
-                    f.copy().convert("RGBA")
-                    for f in ImageSequence.Iterator(avatar_img_raw)
-                ]
-                avatar_frames_processed = []
-                for frame in avatar_frames_raw:
-                    processed_avatar = self.round_avatar_with_border(
-                        frame,
-                        AVATAR_TARGET_SIZE,
-                        AVATAR_BORDER_WIDTH,
-                        AVATAR_BORDER_COLOR,
-                    )
-                    avatar_frames_processed.append(processed_avatar)
-
-                avatar_durations = [
-                    avatar_img_raw.info.get("duration", 100) for _ in avatar_frames_raw
+                avatar_frames_processed = [
+                    self.round_avatar(f, AVATAR_TARGET_SIZE, AVATAR_BORDER_WIDTH)
+                    for f in avatar_frames_raw
                 ]
 
                 max_frames = max(len(banner_frames), len(avatar_frames_processed))
-                print(f"Debug: Max frames for output GIF: {max_frames}")
 
                 for i in range(max_frames):
                     current_banner_frame = banner_frames[i % len(banner_frames)]
@@ -195,15 +354,27 @@ class UserProfile(commands.Cog):
                         i % len(avatar_frames_processed)
                     ]
 
-                    # x_pos = (DISCORD_BANNER_WIDTH - final_avatar_display_size) // 2
-                    x_pos = 30
-                    y_pos = (DISCORD_BANNER_HEIGHT - final_avatar_display_size) // 2
+                    composite_frame = self._prepare_banner_frame(
+                        current_banner_frame
+                    ).copy()
+                    draw = ImageDraw.Draw(composite_frame)
 
-                    composite_frame = current_banner_frame.copy()
+                    composite_frame.paste(misty_layer, (0, 0), misty_layer)
+
+                    x_pos = 30
+                    y_pos = (DISCORD_BANNER_HEIGHT - avatar_final_display_size) // 2
                     composite_frame.paste(
-                        current_avatar_frame,
-                        (x_pos, y_pos),
-                        current_avatar_frame,  # paste with alpha mask
+                        current_avatar_frame, (x_pos, y_pos), current_avatar_frame
+                    )
+
+                    text_x = x_pos + avatar_final_display_size + 20
+                    self._draw_profile_text(
+                        draw,
+                        avatar_final_display_size,
+                        text_x,
+                        username_line_1,
+                        username_line_2,
+                        display_date_text,
                     )
 
                     output_frames.append(composite_frame)
@@ -221,62 +392,44 @@ class UserProfile(commands.Cog):
                     format="GIF",
                     loop=0,
                     duration=frame_durations,
-                    codec="gifski",
+                    palettsize=64,
                 )
                 output_buffer.seek(0)
                 return output_buffer
 
-            else:  # Process static images, like PNG or JPEG
-                original_width, original_height = banner_img.size
-                target_aspect_ratio = DISCORD_BANNER_WIDTH / DISCORD_BANNER_HEIGHT
-                original_aspect_ratio = original_width / original_height
+            else:
+                banner_img_final = self._prepare_banner_frame(banner_img)
 
-                if original_aspect_ratio > target_aspect_ratio:
-                    new_height = DISCORD_BANNER_HEIGHT
-                    new_width = int(original_width * (new_height / original_height))
-                    resized_banner_img = banner_img.resize(
-                        (new_width, new_height), Image.Resampling.LANCZOS
-                    )
-
-                    left = (new_width - DISCORD_BANNER_WIDTH) / 2
-                    top = 0
-                    right = (new_width + DISCORD_BANNER_WIDTH) / 2
-                    bottom = DISCORD_BANNER_HEIGHT
-                    cropped_banner_img = resized_banner_img.crop(
-                        (left, top, right, bottom)
+                if avatar_is_animated:
+                    avatar_img_raw.seek(0)
+                    static_avatar_frame = avatar_img_raw.convert("RGBA")
+                    avatar_img_processed = self.round_avatar(
+                        static_avatar_frame, AVATAR_TARGET_SIZE, AVATAR_BORDER_WIDTH
                     )
                 else:
-                    new_width = DISCORD_BANNER_WIDTH
-                    new_height = int(original_height * (new_width / original_width))
-                    resized_banner_img = banner_img.resize(
-                        (new_width, new_height), Image.Resampling.LANCZOS
+                    avatar_img_processed = self.round_avatar(
+                        avatar_img_raw, AVATAR_TARGET_SIZE, AVATAR_BORDER_WIDTH
                     )
 
-                    left = 0
-                    top = (new_height - DISCORD_BANNER_HEIGHT) / 2
-                    right = DISCORD_BANNER_WIDTH
-                    bottom = (new_height + DISCORD_BANNER_HEIGHT) / 2
-                    cropped_banner_img = resized_banner_img.crop(
-                        (left, top, right, bottom)
-                    )
+                composite_img = banner_img_final.copy()
+                draw = ImageDraw.Draw(composite_img)
 
-                banner_img_final = cropped_banner_img
+                composite_img.paste(misty_layer, (0, 0), misty_layer)
 
-                # Border and round the avatar
-                avatar_img_processed = self.round_avatar_with_border(
-                    avatar_img_raw,
-                    AVATAR_TARGET_SIZE,
-                    AVATAR_BORDER_WIDTH,
-                    AVATAR_BORDER_COLOR,
-                )
-
-                # x_pos = (DISCORD_BANNER_WIDTH - final_avatar_display_size) // 2
                 x_pos = 30
-                y_pos = (DISCORD_BANNER_HEIGHT - final_avatar_display_size) // 2
-
-                composite_img = banner_img_final.copy().convert("RGBA")
+                y_pos = (DISCORD_BANNER_HEIGHT - avatar_final_display_size) // 2
                 composite_img.paste(
                     avatar_img_processed, (x_pos, y_pos), avatar_img_processed
+                )
+
+                text_x = x_pos + avatar_final_display_size + 20
+                self._draw_profile_text(
+                    draw,
+                    avatar_final_display_size,
+                    text_x,
+                    username_line_1,
+                    username_line_2,
+                    display_date_text,
                 )
 
                 output_buffer = io.BytesIO()
@@ -286,14 +439,15 @@ class UserProfile(commands.Cog):
                 return output_buffer
 
         except Exception as e:
-            print(f"Debug: Error in process_image_sync for {member_name}: {e}")
+            print(f"Debug: Error in process_image_sync for {target_user_name}: {e}")
             import traceback
 
             traceback.print_exc()
             return None
 
     @app_commands.command(
-        name="user-profile", description="查看使用者的個人資訊，包含自訂橫幅和頭像"
+        name="user-profile",
+        description="查詢用戶資訊",
     )
     async def user_profile(
         self, interaction: discord.Interaction, member: discord.Member = None
@@ -303,67 +457,49 @@ class UserProfile(commands.Cog):
         original_member = member or interaction.user
         guild = interaction.guild
 
-        full_member = None
+        member_to_use = original_member
         if guild:
             try:
                 full_member = await guild.fetch_member(original_member.id)
-                print(
-                    f"Debug: Successfully fetched full member data for {original_member.name} from guild."
-                )
-            except discord.NotFound:
-                print(
-                    f"Debug: Member {original_member.id} not found in guild cache, will try fetch_user."
-                )
-            except discord.HTTPException as e:
-                print(
-                    f"Debug: HTTP error fetching member {original_member.id} from guild: {e}"
-                )
+                member_to_use = full_member
+            except (discord.NotFound, discord.HTTPException):
+                try:
+                    full_member = await self.bot.fetch_user(original_member.id)
+                    member_to_use = full_member
+                except (discord.NotFound, discord.HTTPException) as e:
+                    logging.error(
+                        f"Debug: Failed to fetch user {original_member.id}: {e}"
+                    )
 
-        if not full_member:
-            try:
-                full_member = await self.bot.fetch_user(original_member.id)
-                print(
-                    f"Debug: Successfully fetched user data for {original_member.name} directly."
-                )
-            except discord.NotFound:
-                print(f"Debug: User {original_member.id} not found via bot.fetch_user.")
-                full_member = original_member
-                print(
-                    f"Debug: Falling back to original member object due to fetch failure."
-                )
-            except discord.HTTPException as e:
-                print(f"Debug: HTTP error fetching user {original_member.id}: {e}")
-                full_member = original_member
-                print(
-                    f"Debug: Falling back to original member object due to fetch error."
-                )
-
-        member_to_use = full_member
-        print(
-            f"Debug: Final member object for processing: {member_to_use.name} (ID: {member_to_use.id})"
-        )
+        guild_data = await get_guild_data(interaction.guild_id)
+        custom_banner_url = guild_data.get("custom_banner_url")
+        generate_gif_enabled = guild_data.get("generate_gif_profile_image", True)
 
         avatar_url = member_to_use.display_avatar.url
-        print(f"Debug: Member avatar URL: {avatar_url}")
+        user = await self.bot.fetch_user(member_to_use.id)
 
-        print(f"Debug: member_to_use.banner object: {member_to_use.banner}")
-        if member_to_use.banner:
-            banner_url = member_to_use.banner.url
-            print(f"Debug: User has custom banner. URL: {banner_url}")
-        else:
-            banner_url = DEFAULT_BANNER_URL
-            print(
-                f"Debug: User has NO custom banner (member_to_use.banner is None). Using DEFAULT_BANNER_URL: {banner_url}"
-            )
+        banner_to_download_url = (
+            user.banner.url if user.banner else (custom_banner_url or avatar_url)
+        )
 
         avatar_data = await self.download_image(avatar_url)
-        banner_data = await self.download_image(banner_url)
+        banner_data = await self.download_image(banner_to_download_url)
+
+        created_at_str = (
+            member_to_use.created_at.strftime("%Y/%m/%d %H:%M")
+            if member_to_use.created_at
+            else "未知日期"
+        )
 
         processed_image_buffer = await asyncio.to_thread(
             self.process_image_sync,
             banner_data,
             avatar_data,
             member_to_use.display_name,
+            member_to_use.name,
+            member_to_use.discriminator,
+            created_at_str,
+            generate_gif_enabled,
         )
 
         file = None
@@ -371,19 +507,26 @@ class UserProfile(commands.Cog):
             is_gif = processed_image_buffer.getvalue()[:4] == b"GIF8"
             filename = "user_profile.gif" if is_gif else "user_profile.png"
             file = discord.File(processed_image_buffer, filename=filename)
-            print(f"Debug: Output file prepared: {filename}")
+            logging.info(f"Debug: Output file prepared: {filename}")
         else:
-            print("Debug: processed_image_buffer is None. File will not be attached.")
+            logging.error(
+                "Debug: processed_image_buffer is None. File will not be attached."
+            )
 
         embed = discord.Embed(
-            title=f"👤 {member_to_use.display_name} 的個人資訊",
-            color=discord.Color.pink(),
+            title=f"**{member_to_use.display_name}** 的個人資訊",
+            color=discord.Color.from_rgb(245, 140, 175),
             timestamp=datetime.utcnow(),
         )
 
+        author_name = (
+            member_to_use.name
+            if member_to_use.discriminator == "0"
+            else f"{member_to_use.name}#{member_to_use.discriminator}"
+        )
         embed.set_author(
-            name=f"{member_to_use.name}#{member_to_use.discriminator}",
-            icon_url=member_to_use.display_avatar.url,
+            name=f"查詢者：{interaction.user.display_name}",
+            icon_url=interaction.user.display_avatar.url,
         )
 
         if guild and guild.icon:
@@ -392,41 +535,81 @@ class UserProfile(commands.Cog):
         if file:
             embed.set_image(url=f"attachment://{file.filename}")
         else:
-            embed.add_field(name="錯誤", value="無法生成個人資料橫幅。", inline=False)
             embed.add_field(
-                name="提示",
-                value="請檢查機器人主控台的除錯訊息，確保橫幅圖片能夠下載。",
+                name="⚠️ **無法生成個人橫幅**",
+                value="請確保用戶有設定橫幅，或伺服器有設定自定義橫幅。若無，將使用頭像作為替代橫幅。",
                 inline=False,
             )
 
-        if isinstance(member_to_use, discord.Member):
+        # Row 1: User ID and Account Type (with a blank field for spacing)
+        embed.add_field(
+            name="🔗 **帳號 ID**", value=f"`{member_to_use.id}`", inline=True
+        )
+        user_type = "🤖 機器人" if member_to_use.bot else "👤 使用者"
+        embed.add_field(name="✨ **此帳號的類型**", value=user_type, inline=True)
+        embed.add_field(
+            name="\u200b", value="\u200b", inline=True
+        )  # Invisible field for spacing
+
+        # Row 2: Account Created At and Joined Server At
+        embed.add_field(name="📅 **加入Discord於**", value=created_at_str, inline=True)
+        if isinstance(member_to_use, discord.Member) and guild:
             joined_at = (
                 member_to_use.joined_at.strftime("%Y/%m/%d %H:%M")
                 if member_to_use.joined_at
                 else "未知"
             )
+            embed.add_field(
+                name=f"📥 **加入`{guild.name}`於**", value=joined_at, inline=True
+            )
+            embed.add_field(
+                name="\u200b", value="\u200b", inline=True
+            )  # Invisible field for spacing
+        else:
+            embed.add_field(
+                name="📥 **加入伺服器於**",
+                value="`該用戶目前不在本伺服器`",
+                inline=True,
+            )
+            embed.add_field(
+                name="\u200b", value="\u200b", inline=True
+            )  # Invisible field for spacing
+
+        # Row 3: Server Boosting and Roles
+        if isinstance(member_to_use, discord.Member):
+            boosting_status = (
+                "💎 正在加成" if member_to_use.premium_since else "❌ 向未加成"
+            )
+            embed.add_field(
+                name="🚀 **加成此伺服器**", value=boosting_status, inline=True
+            )
+
             roles = [
                 role.mention for role in member_to_use.roles if role.name != "@everyone"
             ]
-            roles_str = ", ".join(roles) if roles else "無"
-            embed.add_field(name="📥 加入伺服器時間", value=joined_at, inline=True)
-            embed.add_field(name="🎭 擁有的身分組", value=roles_str, inline=False)
+            roles_str = ", ".join(roles) if roles else "無任何身分組"
+            embed.add_field(name="🎭 **擁有的身分組**", value=roles_str, inline=True)
+            embed.add_field(
+                name="\u200b", value="\u200b", inline=True
+            )  # Invisible field for spacing
         else:
             embed.add_field(
-                name="📥 加入伺服器時間", value="不在伺服器內或無法獲取", inline=True
+                name="🚀 **伺服器加成**",
+                value="`無法獲取 (用戶不在伺服器)`",
+                inline=True,
             )
             embed.add_field(
-                name="🎭 擁有的身分組", value="不在伺服器內或無法獲取", inline=False
+                name="🎭 **擁有的身分組**",
+                value="`無法獲取 (用戶不在伺服器)`",
+                inline=True,
             )
-
-        created_at = member_to_use.created_at.strftime("%Y/%m/%d %H:%M")
-
-        embed.add_field(name="🆔 使用者 ID", value=str(member_to_use.id), inline=False)
-        embed.add_field(name="📅 加入 Discord 時間", value=created_at, inline=True)
+            embed.add_field(
+                name="\u200b", value="\u200b", inline=True
+            )  # Invisible field for spacing
 
         embed.set_footer(
-            text=f"由 {interaction.user.display_name} 查詢",
-            icon_url=interaction.user.display_avatar.url,
+            text=f"由 {self.bot.user.name} 提供服務",
+            icon_url=self.bot.user.display_avatar.url,
         )
 
         if file:
