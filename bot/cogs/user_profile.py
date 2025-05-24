@@ -14,9 +14,9 @@ from bot.utils.database import get_guild_data
 # --- Constants (unchanged) ---
 DISCORD_BANNER_WIDTH = 600
 DISCORD_BANNER_HEIGHT = 240
-AVATAR_TARGET_SIZE = 140
-AVATAR_BORDER_WIDTH = 5
-MISTY_LAYER_COLOR = (0, 0, 0, 80)
+AVATAR_TARGET_SIZE = 142
+AVATAR_BORDER_WIDTH = 3
+MISTY_LAYER_COLOR = (0, 0, 0, 40)
 FONT_DIR = "fonts"
 FONT_FALLBACK_PATHS = [
     os.path.join(FONT_DIR, "cute.ttf"),
@@ -112,6 +112,7 @@ class UserProfile(commands.Cog):
     ) -> Image.Image:
         avatar_resized = avatar_img.resize((size, size), Image.Resampling.LANCZOS)
 
+        # Create a mask for the rounded avatar
         mask_size = size * 4
         mask = Image.new("L", (mask_size, mask_size), 0)
         draw_mask = ImageDraw.Draw(mask)
@@ -121,17 +122,19 @@ class UserProfile(commands.Cog):
         rounded_avatar = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         rounded_avatar.paste(avatar_resized, (0, 0), mask)
 
+        # Calculate sizes for the composite image, shadow, and border
         shadow_spread = border_width * 2.0
         shadow_blur_radius = border_width * 1.5
         shadow_offset_x = border_width * 0.75
         shadow_offset_y = border_width * 0.75
         shadow_alpha = 150
 
+        # Increased canvas size to accommodate both shadow and inner border
         canvas_size = int(size + shadow_spread * 2)
         composite_image = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
 
+        # Create and apply the shadow
         shadow_base_size = int(size + shadow_spread)
-
         shadow_source_canvas_size = int(shadow_base_size + shadow_blur_radius * 2)
         raw_shadow_source = Image.new(
             "RGBA", (shadow_source_canvas_size, shadow_source_canvas_size), (0, 0, 0, 0)
@@ -163,14 +166,65 @@ class UserProfile(commands.Cog):
             shadow_blurred, (shadow_paste_x, shadow_paste_y), shadow_blurred
         )
 
+        # Paste the rounded avatar onto the composite image
         avatar_x_pos = int((canvas_size - size) / 2)
         avatar_y_pos = int((canvas_size - size) / 2)
-
         composite_image.paste(
             rounded_avatar, (avatar_x_pos, avatar_y_pos), rounded_avatar
         )
 
         return composite_image
+
+    def _create_inner_rounded_border_overlay(
+        self,
+        width: int,
+        height: int,
+        border_width: int,
+        color: tuple,
+        inner_corner_radius: int,
+    ) -> Image.Image:
+        """
+        Creates a transparent overlay with a rectangular outer shape and a transparent
+        inner area with rounded corners. This forms a border with only inner rounding
+        and ensures outer corners are transparent.
+        """
+        # Start with a fully transparent image
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        # Draw the outer rectangle shape of the border onto a temporary opaque image
+        # This will serve as the base for our border.
+        border_base = Image.new("RGBA", (width, height), color)
+
+        # Now, create a mask for the inner transparent area with rounded corners.
+        # This mask should be black (0) for transparent parts and white (255) for opaque parts.
+        inner_mask = Image.new("L", (width, height), 0)  # Start fully transparent
+        draw_inner_mask = ImageDraw.Draw(inner_mask)
+
+        # Define the inner rectangle coordinates for the rounded cut-out.
+        inner_x1 = border_width
+        inner_y1 = border_width
+        inner_x2 = width - border_width
+        inner_y2 = height - border_width
+
+        # Draw the rounded rectangle onto the inner_mask, filling it with white (255).
+        # This area will become transparent in the final overlay.
+        draw_inner_mask.rounded_rectangle(
+            (inner_x1, inner_y1, inner_x2, inner_y2),
+            radius=inner_corner_radius,
+            fill=255,
+        )
+
+        # Apply the inner_mask to the border_base.
+        # Wherever inner_mask is white (255), the corresponding pixels in border_base will become transparent.
+        # The result is the desired hollow, inner-rounded border.
+        border_base.paste((0, 0, 0, 0), (0, 0), inner_mask)
+
+        # Now, paste this prepared border_base onto our final transparent overlay.
+        # The alpha channel of border_base will correctly define the border shape.
+        overlay.paste(border_base, (0, 0), border_base)
+
+        return overlay
 
     def _prepare_banner_frame(self, frame: Image.Image) -> Image.Image:
         original_width, original_height = frame.size
@@ -199,7 +253,10 @@ class UserProfile(commands.Cog):
             right = DISCORD_BANNER_WIDTH
             bottom = (new_height + DISCORD_BANNER_HEIGHT) / 2
             cropped_frame = resized_frame.crop((left, top, right, bottom))
-        return cropped_frame.convert("RGBA")
+
+        # Ensure the cropped frame is RGBA for transparency
+        cropped_frame = cropped_frame.convert("RGBA")
+        return cropped_frame
 
     def _get_image_frames_and_durations(self, img: Image.Image):
         frames = []
@@ -278,8 +335,8 @@ class UserProfile(commands.Cog):
         date_width = date_text_bbox[2] - date_text_bbox[0]
         date_height = date_text_bbox[3] - date_text_bbox[1]
 
-        date_x = DISCORD_BANNER_WIDTH - date_width - 10
-        date_y = DISCORD_BANNER_HEIGHT - date_height - 10
+        date_x = DISCORD_BANNER_WIDTH - date_width - 15
+        date_y = DISCORD_BANNER_HEIGHT - date_height - 15
         self._draw_text_with_fallback(
             draw,
             (date_x, date_y),
@@ -333,6 +390,20 @@ class UserProfile(commands.Cog):
             )
             display_date_text = created_at_date_str
 
+            # Define banner border properties
+            banner_border_width = 6  # Thickness of the border
+            banner_border_color = (0, 0, 0, 100)  # Semi-transparent black
+            banner_inner_corner_radius = 20  # How rounded the inner corners are
+
+            # Create the border overlay once for efficiency
+            border_overlay = self._create_inner_rounded_border_overlay(
+                DISCORD_BANNER_WIDTH,
+                DISCORD_BANNER_HEIGHT,
+                banner_border_width,
+                banner_border_color,
+                banner_inner_corner_radius,
+            )
+
             if should_generate_gif:
                 banner_frames, banner_durations = self._get_image_frames_and_durations(
                     banner_img
@@ -354,12 +425,18 @@ class UserProfile(commands.Cog):
                         i % len(avatar_frames_processed)
                     ]
 
+                    # Prepare the banner frame (no outer rounding here)
                     composite_frame = self._prepare_banner_frame(
                         current_banner_frame
                     ).copy()
-                    draw = ImageDraw.Draw(composite_frame)
 
+                    # Apply the misty layer
                     composite_frame.paste(misty_layer, (0, 0), misty_layer)
+
+                    # Apply the inner-rounded border overlay
+                    composite_frame.paste(border_overlay, (0, 0), border_overlay)
+
+                    draw = ImageDraw.Draw(composite_frame)
 
                     x_pos = 30
                     y_pos = (DISCORD_BANNER_HEIGHT - avatar_final_display_size) // 2
@@ -386,19 +463,27 @@ class UserProfile(commands.Cog):
                     )
 
                 output_buffer = io.BytesIO()
+                # For GIFs, convert to RGB before saving to avoid potential transparency issues
                 iio.imwrite(
                     output_buffer,
                     [f.convert("RGB") for f in output_frames],
                     format="GIF",
                     loop=0,
                     duration=frame_durations,
-                    palettsize=64,
+                    palettsize=64,  # Recommended for non-transparent GIFs
                 )
                 output_buffer.seek(0)
                 return output_buffer
 
-            else:
+            else:  # Static image processing
                 banner_img_final = self._prepare_banner_frame(banner_img)
+                draw = ImageDraw.Draw(banner_img_final)
+
+                # Apply the misty layer
+                banner_img_final.paste(misty_layer, (0, 0), misty_layer)
+
+                # Apply the inner-rounded border overlay
+                banner_img_final.paste(border_overlay, (0, 0), border_overlay)
 
                 if avatar_is_animated:
                     avatar_img_raw.seek(0)
@@ -413,8 +498,6 @@ class UserProfile(commands.Cog):
 
                 composite_img = banner_img_final.copy()
                 draw = ImageDraw.Draw(composite_img)
-
-                composite_img.paste(misty_layer, (0, 0), misty_layer)
 
                 x_pos = 30
                 y_pos = (DISCORD_BANNER_HEIGHT - avatar_final_display_size) // 2
