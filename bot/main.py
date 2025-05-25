@@ -63,6 +63,9 @@ async def on_ready():
     # Load your cogs (extensions) here.
     # await bot.load_extension("bot.cogs.messaging") # Uncomment if you need this
     # await bot.load_extension("bot.cogs.user_profile_panel")
+    await bot.load_extension("bot.cogs.poll")
+    await bot.load_extension("bot.cogs.role_selector")
+    await bot.load_extension("bot.cogs.roulette")
     await bot.load_extension("bot.cogs.devpanel")
     await bot.load_extension("bot.cogs.link_fixer")
     # await bot.load_extension("bot.cogs.welcome_panel")

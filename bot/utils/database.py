@@ -63,7 +63,9 @@ DEFAULT_CONFIG = {
     "leave_image_enabled": True,
     "leave_generate_gif": True,
     "leave_custom_banner_url": None,
-    "welcome_initial_role_id": None,  # New: Initial role for new members
+    "welcome_initial_role_id": None,
+    "selectable_roles": [],  # 新增：可選身份組列表
+    "role_selection_channel_id": None,  # 新增：身份組選擇功能激活的頻道
 }
 
 
