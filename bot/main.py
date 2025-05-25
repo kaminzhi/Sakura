@@ -66,6 +66,7 @@ async def on_ready():
     await bot.load_extension("bot.cogs.poll")
     await bot.load_extension("bot.cogs.role_selector")
     await bot.load_extension("bot.cogs.roulette")
+    await bot.load_extension("bot.cogs.ban")
     await bot.load_extension("bot.cogs.devpanel")
     await bot.load_extension("bot.cogs.link_fixer")
     # await bot.load_extension("bot.cogs.welcome_panel")

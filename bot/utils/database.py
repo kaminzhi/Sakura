@@ -2,11 +2,13 @@
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 config_collection = mongo_client[MONGO_DB_NAME]["guild_configs"]
+bans_collection = mongo_client[MONGO_DB_NAME]["bans"]  # New collection for bans
 
 DEFAULT_CONFIG = {
     "auto_link_fix": True,
@@ -64,8 +66,13 @@ DEFAULT_CONFIG = {
     "leave_generate_gif": True,
     "leave_custom_banner_url": None,
     "welcome_initial_role_id": None,
-    "selectable_roles": [],  # 新增：可選身份組列表
-    "role_selection_channel_id": None,  # 新增：身份組選擇功能激活的頻道
+    "selectable_roles": [],
+    "role_selection_channel_id": None,
+    # New ban-related fields
+    "ban_channel_id": None,  # Channel for ban panel
+    "ban_log_channel_id": None,  # Channel for ban logs
+    "dev_ids": [123456789012345678],  # Replace with your Discord user ID(s)
+    "ban_allowed_roles": [],
 }
 
 
@@ -108,3 +115,8 @@ async def update_guild_data(guild_id: int, data: dict):
     await config_collection.update_one(
         {"guild_id": guild_id}, {"$set": data}, upsert=True
     )
+
+
+async def log_ban(ban_data: dict):
+    ban_data["timestamp"] = datetime.utcnow()
+    await bans_collection.insert_one(ban_data)
