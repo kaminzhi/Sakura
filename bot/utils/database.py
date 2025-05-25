@@ -8,7 +8,7 @@ load_dotenv()
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
 mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
 config_collection = mongo_client[MONGO_DB_NAME]["guild_configs"]
-bans_collection = mongo_client[MONGO_DB_NAME]["bans"]  # New collection for bans
+bans_collection = mongo_client[MONGO_DB_NAME]["bans"]
 
 DEFAULT_CONFIG = {
     "auto_link_fix": True,
@@ -69,9 +69,9 @@ DEFAULT_CONFIG = {
     "selectable_roles": [],
     "role_selection_channel_id": None,
     # New ban-related fields
-    "ban_channel_id": None,  # Channel for ban panel
-    "ban_log_channel_id": None,  # Channel for ban logs
-    "dev_ids": [123456789012345678],  # Replace with your Discord user ID(s)
+    "ban_channel_id": None,
+    "ban_log_channel_id": None,
+    "dev_ids": [123456789012345678],
     "ban_allowed_roles": [],
 }
 
@@ -118,5 +118,33 @@ async def update_guild_data(guild_id: int, data: dict):
 
 
 async def log_ban(ban_data: dict):
+    # Ensure 'active' status, default to True for new bans
+    if "active" not in ban_data:
+        ban_data["active"] = True
     ban_data["timestamp"] = datetime.utcnow()
     await bans_collection.insert_one(ban_data)
+
+
+async def is_server_banned(guild_id: int) -> bool:
+    """Checks if a server is currently banned."""
+    # A server is considered banned if there's an active ban record for it.
+    ban_record = await bans_collection.find_one(
+        {"guild_id": guild_id, "type": "server", "active": True}
+    )
+    return ban_record is not None
+
+
+async def unban_server(guild_id: int):
+    """Marks a server ban as inactive."""
+    await bans_collection.update_many(
+        {"guild_id": guild_id, "type": "server", "active": True},
+        {"$set": {"active": False, "unban_timestamp": datetime.utcnow()}},
+    )
+
+
+async def get_banned_servers() -> list:
+    """Retrieves all actively banned servers from the database."""
+    # Only fetch active server bans
+    return await bans_collection.find({"type": "server", "active": True}).to_list(
+        length=None
+    )
