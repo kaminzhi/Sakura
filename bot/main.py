@@ -71,7 +71,11 @@ async def on_ready():
     except Exception as e:
         logging.error(f"❌ MongoDB Connection Fail: {e}")
 
+    # 自動載入 bot/cogs 下的所有 .py 模組
     cogs_path = Path(__file__).parent / "cogs"
+    loaded_count = 0
+    failed_count = 0
+
     for file in cogs_path.rglob("*.py"):
         if file.name.startswith("_"):
             continue
@@ -80,8 +84,12 @@ async def on_ready():
         try:
             await bot.load_extension(module_name)
             logger.info(f"✅ 成功載入模組：{module_name}")
+            loaded_count += 1
         except Exception as e:
             logger.error(f"❌ 載入模組 {module_name} 失敗：{e}")
+            failed_count += 1
+
+    logger.info(f"📦 共載入 {loaded_count} 個模組，失敗 {failed_count} 個。")
 
     # --- Command Synchronization Logic ---
     if SYNC_COMMANDS_GLOBAL:
