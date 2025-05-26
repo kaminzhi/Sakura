@@ -154,10 +154,6 @@ class RoleSelector(commands.Cog):
         )  # Fallback if no guilds available
         view = RoleSelectorView({}, placeholder_guild)
         self.bot.add_view(view)
-        logger.info("Registered persistent RoleSelectorView with custom_id")
-
-    async def cog_load(self):
-        logger.info("RoleSelector cog loaded")
 
     @app_commands.command(name="rolepanel", description="發送身份組選擇面板")
     @app_commands.default_permissions(manage_roles=True)

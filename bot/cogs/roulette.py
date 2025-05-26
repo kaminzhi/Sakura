@@ -124,13 +124,11 @@ class RouletteView(View):
             value="\n".join(self.all_participants) if self.all_participants else "無",
             inline=False,
         )
-        embed.add_field(
-            name="🏆 預計得獎者數量", value=str(self.num_winners), inline=True
-        )
+        embed.add_field(name="🏆 選中數量", value=str(self.num_winners), inline=True)
 
         if self.winners:
-            winner_list = "\n".join([f"恭喜 {winner}！" for winner in self.winners])
-            embed.add_field(name="🎉 得獎者", value=winner_list, inline=False)
+            winner_list = "\n".join([f"選中 {winner}！" for winner in self.winners])
+            embed.add_field(name="🎉 ", value=winner_list, inline=False)
             embed.color = discord.Color.gold()
 
         embed.set_footer(
@@ -166,7 +164,7 @@ class RouletteView(View):
             item.disabled = True
 
         embed = self.create_roulette_embed()
-        embed.description = "抽籤已完成，得獎者如下："
+        embed.description = "抽籤已完成，如下："
         embed.title = f"🎊 抽籤結果: {self.activity_name}"
 
         try:
@@ -192,7 +190,7 @@ class RouletteCog(commands.Cog):
 
     @app_commands.command(
         name="roulette",
-        description="創建一個隨機抽籤輪盤，選出幸運得獎者",
+        description="創建一個隨機抽籤輪盤活動",
     )
     async def create_roulette(self, interaction: discord.Interaction):
         # The bot.user is available via interaction.client.user for modals

@@ -9,7 +9,7 @@ class LinkFixSettings(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="linkfix-settings", description="設定自動連結修正功能")
+    @app_commands.command(name="linkfix-panel", description="設定自動連結修正功能")
     async def linkfix_settings(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 

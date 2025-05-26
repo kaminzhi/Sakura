@@ -71,9 +71,6 @@ DEFAULT_CONFIG = {
     "ban_channel_id": None,
     "ban_log_channel_id": None,
     "ban_panel_allowed_roles": [],  # New: Roles allowed to use /ban_panel
-    "dev_ids": [
-        123456789012345678
-    ],  # Placeholder, ensure this is a valid ID in your .env or replace.
     "ban_allowed_roles": [],
     "ban_user_allowed_roles": [],
 }

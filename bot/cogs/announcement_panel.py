@@ -740,9 +740,6 @@ class AnnouncementManager(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.bot_owner_ids = BOT_OWNER_IDS  # Replace with your Discord user ID
-        logger.info(
-            f"Initialized AnnouncementManager with bot_owner_ids: {self.bot_owner_ids}"
-        )
 
     @app_commands.command(name="announce", description="創建並發送伺服器公告")
     @app_commands.default_permissions(manage_guild=True)

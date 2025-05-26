@@ -118,18 +118,6 @@ class Leave(commands.Cog):
                 inline=False,
             )
 
-        embed.add_field(
-            name="📅 **帳號創建於**",
-            value=member.created_at.strftime("%Y/%m/%d %H:%M")
-            if member.created_at
-            else "未知日期",
-            inline=True,
-        )
-        embed.add_field(
-            name="📤 **離開伺服器於**",
-            value=datetime.utcnow().strftime("%Y/%m/%d %H:%M"),
-            inline=True,
-        )
         embed.set_footer(
             text=f"由 {self.bot.user.name} 提供服務",
             icon_url=self.bot.user.display_avatar.url,

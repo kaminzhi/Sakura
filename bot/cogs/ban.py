@@ -1,4 +1,3 @@
-# bot/cogs/ban_system.py
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -10,6 +9,7 @@ from bot.utils.database import get_guild_data, log_ban
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
 
 class BanSystemView(View):
     def __init__(self, guild_data: dict, guild: discord.Guild):
@@ -123,6 +123,7 @@ class BanSystemView(View):
     async def cancel(self, interaction: discord.Interaction):
         await interaction.response.send_message("已取消操作。", ephemeral=True)
 
+
 class ConfirmBanUserView(View):
     def __init__(self, members: list, guild: discord.Guild, guild_data: dict):
         super().__init__(timeout=60)
@@ -140,7 +141,9 @@ class ConfirmBanUserView(View):
     @discord.ui.button(
         label="確認", style=discord.ButtonStyle.danger, custom_id="confirm_ban_user"
     )
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def confirm(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
         if not await self.check_user_permissions(interaction.user):
             await interaction.response.send_message(
                 "你需要封禁成員權限來確認！", ephemeral=True
@@ -196,16 +199,28 @@ class ConfirmBanUserView(View):
                         color=discord.Color.red(),
                         timestamp=datetime.utcnow(),
                     )
-                    embed.add_field(name="伺服器", value=f"{self.guild.name} (ID: {self.guild.id})", inline=False)
-                    embed.add_field(name="成員", value=f"{member.mention} (ID: {member.id})", inline=False)
+                    embed.add_field(
+                        name="伺服器",
+                        value=f"{self.guild.name} (ID: {self.guild.id})",
+                        inline=False,
+                    )
+                    embed.add_field(
+                        name="成員",
+                        value=f"{member.mention} (ID: {member.id})",
+                        inline=False,
+                    )
                     embed.add_field(name="原因", value=reason, inline=False)
-                    embed.add_field(name="操作者", value=interaction.user.mention, inline=False)
+                    embed.add_field(
+                        name="操作者", value=interaction.user.mention, inline=False
+                    )
                     embed.set_footer(
                         text=f"由 {self.guild.me.display_name} 提供服務",
-                        icon_url=self.guild.me.display_avatar.url
+                        icon_url=self.guild.me.display_avatar.url,
                     )
                     await log_channel.send(embed=embed)
-                    logger.debug(f"Sent ban log to channel {log_channel_id} for user {member.id}")
+                    logger.debug(
+                        f"Sent ban log to channel {log_channel_id} for user {member.id}"
+                    )
             except discord.Forbidden:
                 logger.error(
                     f"Failed to ban user {member.id}: missing permissions or role hierarchy issue. "
@@ -251,6 +266,7 @@ class ConfirmBanUserView(View):
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("已取消成員封禁。", ephemeral=True)
 
+
 class BanSystem(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -258,19 +274,12 @@ class BanSystem(commands.Cog):
         placeholder_guild = discord.Object(id=0)
         view = BanSystemView({}, placeholder_guild)
         self.bot.add_view(view)
-        logger.info("Registered persistent BanSystemView with custom_id")
-
-    async def cog_load(self):
-        logger.info("BanSystem cog loaded")
 
     @app_commands.command(name="ban_panel", description="發送封禁管理面板")
     @app_commands.default_permissions(manage_guild=True)
     async def ban_panel(self, interaction: discord.Interaction):
         guild_data = await get_guild_data(interaction.guild_id)
         ban_channel_id = guild_data.get("ban_channel_id")
-        logger.debug(
-            f"Ban panel requested: channel_id={interaction.channel_id}, expected={ban_channel_id}"
-        )
         if not ban_channel_id:
             await interaction.response.send_message(
                 "請先在設定面板中設定封禁管理頻道！", ephemeral=True
@@ -310,7 +319,6 @@ class BanSystem(commands.Cog):
                 "使用以下按鈕管理封禁：\n"
                 "- **選擇成員**: 管理員專用，選擇並封禁伺服器內成員\n"
                 "- **取消**: 取消操作\n"
-                "\n*伺服器封禁請使用 `/devpanel` 指令*"
             ),
             color=discord.Color.red(),
         )
@@ -320,7 +328,6 @@ class BanSystem(commands.Cog):
         )
         view = BanSystemView(guild_data, interaction.guild)
         await interaction.response.send_message(embed=embed, view=view)
-        logger.info(f"Sent ban panel in channel {ban_channel_id}")
 
     @app_commands.command(name="refresh_ban_panel", description="重新整理封禁管理面板")
     @app_commands.default_permissions(manage_guild=True)
@@ -356,7 +363,6 @@ class BanSystem(commands.Cog):
                 ):
                     try:
                         await message.delete()
-                        logger.debug(f"Deleted old ban panel: message_id={message.id}")
                     except discord.Forbidden:
                         logger.error("Missing permissions to delete old ban panel")
                     except discord.HTTPException as e:
@@ -379,8 +385,7 @@ class BanSystem(commands.Cog):
         )
         view = BanSystemView(guild_data, interaction.guild)
         await interaction.response.send_message(embed=embed, view=view)
-        logger.info(f"Refreshed ban panel in channel {ban_channel_id}")
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(BanSystem(bot))
-    logger.info("BanSystem cog added to bot")
