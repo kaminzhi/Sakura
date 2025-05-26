@@ -8,9 +8,7 @@ class Ping(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(
-        name="ping", description="用超中二方式測試機器人延遲（有夠重要）"
-    )
+    @app_commands.command(name="ping", description="測試機器人延遲")
     async def ping(self, interaction: discord.Interaction):
         latency = self.bot.latency * 1000
 
