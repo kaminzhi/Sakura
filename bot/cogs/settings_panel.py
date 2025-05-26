@@ -16,6 +16,7 @@ from bot.utils.database import get_guild_data, update_guild_data
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 class SettingsModal(Modal):
     def __init__(
         self,
@@ -538,6 +539,7 @@ class SettingsModal(Modal):
                 )
             except Exception as e:
                 logger.error(f"Modal 後更新原始消息失敗: {e}")
+
 
 class SettingsView(View):
     def __init__(
@@ -1216,7 +1218,9 @@ class SettingsView(View):
             try:
                 # Use followup to send new message
                 await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-                logger.debug(f"Sent new message via followup, interaction_id: {interaction.id}")
+                logger.debug(
+                    f"Sent new message via followup, interaction_id: {interaction.id}"
+                )
             except discord.errors.NotFound as followup_e:
                 logger.error(f"Followup send failed: {followup_e}")
                 try:
@@ -1224,7 +1228,9 @@ class SettingsView(View):
                     await interaction.channel.send(
                         embed=embed, view=view, ephemeral=True
                     )
-                    logger.debug(f"Sent new message via channel, interaction_id: {interaction.id}")
+                    logger.debug(
+                        f"Sent new message via channel, interaction_id: {interaction.id}"
+                    )
                 except Exception as channel_e:
                     logger.error(f"Channel send failed: {channel_e}")
                     try:
@@ -1274,9 +1280,7 @@ class SettingsView(View):
         except Exception as e:
             logger.error(f"Unexpected error updating message: {e}")
             try:
-                await interaction.followup.send(
-                    "更新面板時發生錯誤。", ephemeral=True
-                )
+                await interaction.followup.send("更新面板時發生錯誤。", ephemeral=True)
             except Exception as final_e:
                 logger.error(f"Final send failed: {final_e}")
 
@@ -1457,6 +1461,7 @@ class SettingsView(View):
 
         return embed, view
 
+
 class SettingsManager(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -1477,6 +1482,7 @@ class SettingsManager(commands.Cog):
         view = SettingsView(original_interaction=interaction, bot_user=self.bot.user)
         embed, view = view._create_current_page(current_guild_data, self.bot.user)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(SettingsManager(bot))

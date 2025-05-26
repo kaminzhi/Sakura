@@ -68,11 +68,14 @@ DEFAULT_CONFIG = {
     "welcome_initial_role_id": None,
     "selectable_roles": [],
     "role_selection_channel_id": None,
-    # New ban-related fields
     "ban_channel_id": None,
     "ban_log_channel_id": None,
-    "dev_ids": [123456789012345678],
+    "ban_panel_allowed_roles": [],  # New: Roles allowed to use /ban_panel
+    "dev_ids": [
+        123456789012345678
+    ],  # Placeholder, ensure this is a valid ID in your .env or replace.
     "ban_allowed_roles": [],
+    "ban_user_allowed_roles": [],
 }
 
 
@@ -118,7 +121,6 @@ async def update_guild_data(guild_id: int, data: dict):
 
 
 async def log_ban(ban_data: dict):
-    # Ensure 'active' status, default to True for new bans
     if "active" not in ban_data:
         ban_data["active"] = True
     ban_data["timestamp"] = datetime.utcnow()
@@ -126,8 +128,6 @@ async def log_ban(ban_data: dict):
 
 
 async def is_server_banned(guild_id: int) -> bool:
-    """Checks if a server is currently banned."""
-    # A server is considered banned if there's an active ban record for it.
     ban_record = await bans_collection.find_one(
         {"guild_id": guild_id, "type": "server", "active": True}
     )
@@ -135,7 +135,6 @@ async def is_server_banned(guild_id: int) -> bool:
 
 
 async def unban_server(guild_id: int):
-    """Marks a server ban as inactive."""
     await bans_collection.update_many(
         {"guild_id": guild_id, "type": "server", "active": True},
         {"$set": {"active": False, "unban_timestamp": datetime.utcnow()}},
@@ -143,8 +142,6 @@ async def unban_server(guild_id: int):
 
 
 async def get_banned_servers() -> list:
-    """Retrieves all actively banned servers from the database."""
-    # Only fetch active server bans
     return await bans_collection.find({"type": "server", "active": True}).to_list(
         length=None
     )
