@@ -35,7 +35,7 @@ DEFAULT_CONFIG = {
         "twitter.com": {"replacement": "fxtwitter.com", "label": "Twitter/X"},
         "x.com": {"replacement": "fixupx.com", "label": "Twitter/X"},
         "bsky.app": {"replacement": "fxbsky.app", "label": "Bluesky"},
-        "instagram.com": {"replacement": "ddinstagram.com", "label": "Instagram"},
+        "instagram.com": {"replacement": "instagramez.com", "label": "Instagram"},
         "youtube.com": {"replacement": "koutube.com", "label": "Youtube"},
         "youtu.be": {"replacement": "koutube.com", "label": "Youtube"},
         "reddit.com": {"replacement": "rxddit.com", "label": "Reddit"},
@@ -73,6 +73,8 @@ DEFAULT_CONFIG = {
     "ban_panel_allowed_roles": [],  # New: Roles allowed to use /ban_panel
     "ban_allowed_roles": [],
     "ban_user_allowed_roles": [],
+    "dvc_trigger_channel_id": None,
+    "dvc_category_id": None,
 }
 
 

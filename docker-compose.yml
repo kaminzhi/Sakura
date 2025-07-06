@@ -19,7 +19,8 @@ services:
     hostname: sakuradb
     restart: always
     ports:
-      - "27017:27017"
+      - "27018:27018"
+    command: ["mongod", "--port", "27018"]
     environment:
       # UID: 1000
       # GID: 1000

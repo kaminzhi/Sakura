@@ -22,6 +22,19 @@ DATE_FONT_SIZE = 16
 TEXT_COLOR = (255, 255, 255, 255)
 LINE_SPACING = 15
 
+# --- NEW COMPRESSION CONSTANTS ---
+# For GIF: Control animation speed and frame count
+GIF_MAX_FPS = 10  # Target maximum frames per second for output GIF (adjust as needed)
+GIF_MIN_FRAME_DURATION_MS = int(
+    700 / GIF_MAX_FPS
+)  # Calculated duration in milliseconds
+GIF_MAX_TOTAL_FRAMES = (
+    80  # Maximum total frames for a GIF (prevents excessively long animations)
+)
+
+# For PNG: Ensure optimization is applied
+PNG_OPTIMIZE = True
+
 
 class ImageProcessor:
     def __init__(self):
@@ -70,6 +83,10 @@ class ImageProcessor:
     def round_avatar(
         self, avatar_img: Image.Image, size: int, border_width: int
     ) -> Image.Image:
+        # Ensure avatar_img is RGBA before resizing
+        if avatar_img.mode != "RGBA":
+            avatar_img = avatar_img.convert("RGBA")
+
         avatar_resized = avatar_img.resize((size, size), Image.Resampling.LANCZOS)
         mask_size = size * 4
         mask = Image.new("L", (mask_size, mask_size), 0)
@@ -80,6 +97,7 @@ class ImageProcessor:
         rounded_avatar = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         rounded_avatar.paste(avatar_resized, (0, 0), mask)
 
+        # Shadow calculation and application (as per your original code)
         shadow_spread = border_width * 2.0
         shadow_blur_radius = border_width * 1.5
         shadow_offset_x = border_width * 0.75
@@ -156,6 +174,10 @@ class ImageProcessor:
         return overlay
 
     def _prepare_banner_frame(self, frame: Image.Image) -> Image.Image:
+        # Ensure the frame is RGBA before processing
+        if frame.mode != "RGBA":
+            frame = frame.convert("RGBA")
+
         original_width, original_height = frame.size
         target_aspect_ratio = DISCORD_BANNER_WIDTH / DISCORD_BANNER_HEIGHT
         original_aspect_ratio = original_width / original_height
@@ -182,21 +204,30 @@ class ImageProcessor:
             right = DISCORD_BANNER_WIDTH
             bottom = (new_height + DISCORD_BANNER_HEIGHT) / 2
             cropped_frame = resized_frame.crop((left, top, right, bottom))
-        return cropped_frame.convert("RGBA")
+        return cropped_frame  # Already converted to RGBA at the start of the function
 
     def _get_image_frames_and_durations(self, img: Image.Image):
         frames = []
         durations = []
         for f in ImageSequence.Iterator(img):
-            frames.append(f.copy().convert("RGBA"))
-            duration = f.info.get("duration", 100)
+            # Ensure frame is RGBA and resize for GIF compression
+            processed_frame = f.copy().convert("RGBA")
+            # Apply banner dimensions to each frame to ensure consistent size
+            processed_frame = self._prepare_banner_frame(processed_frame)
+            frames.append(processed_frame)
+
+            # --- Forced GIF Frame Duration ---
+            # Prioritize GIF_MIN_FRAME_DURATION_MS to control overall FPS
+            duration = f.info.get("duration", GIF_MIN_FRAME_DURATION_MS)
             try:
                 duration = int(duration)
                 if duration <= 0:
-                    duration = 100
+                    duration = GIF_MIN_FRAME_DURATION_MS
             except (ValueError, TypeError):
-                duration = 100
-            durations.append(duration)
+                duration = GIF_MIN_FRAME_DURATION_MS
+            durations.append(
+                max(duration, GIF_MIN_FRAME_DURATION_MS)
+            )  # Ensure minimum duration
         return frames, durations
 
     def _draw_profile_text(
@@ -288,6 +319,8 @@ class ImageProcessor:
                 banner_is_animated or avatar_is_animated
             )
 
+            # Process a static version of the avatar to get its final display size
+            # This is used for text positioning, regardless of whether a GIF is generated
             temp_processed_avatar = self.round_avatar(
                 avatar_img_raw.copy(), AVATAR_TARGET_SIZE, AVATAR_BORDER_WIDTH
             )
@@ -318,26 +351,42 @@ class ImageProcessor:
             )
 
             if should_generate_gif:
-                banner_frames, banner_durations = self._get_image_frames_and_durations(
+                logging.info(
+                    f"Generating animated profile image with max FPS: {GIF_MAX_FPS}, max frames: {GIF_MAX_TOTAL_FRAMES}"
+                )
+                banner_frames_processed, _ = self._get_image_frames_and_durations(
                     banner_img
-                )
-                avatar_frames_raw, avatar_durations = (
-                    self._get_image_frames_and_durations(avatar_img_raw)
-                )
+                )  # Banner frames are already resized within this function now
+                avatar_frames_raw, _ = self._get_image_frames_and_durations(
+                    avatar_img_raw
+                )  # Avatar frames are already resized within this function now
                 avatar_frames_processed = [
                     self.round_avatar(f, AVATAR_TARGET_SIZE, AVATAR_BORDER_WIDTH)
                     for f in avatar_frames_raw
                 ]
-                max_frames = max(len(banner_frames), len(avatar_frames_processed))
 
-                for i in range(max_frames):
-                    current_banner_frame = banner_frames[i % len(banner_frames)]
+                # Determine the total number of frames for the GIF
+                total_frames_to_process = max(
+                    len(banner_frames_processed), len(avatar_frames_processed)
+                )
+
+                # Limit the total number of frames to prevent excessively large GIFs
+                if total_frames_to_process > GIF_MAX_TOTAL_FRAMES:
+                    logging.warning(
+                        f"GIF frame count ({total_frames_to_process}) exceeds MAX_TOTAL_FRAMES ({GIF_MAX_TOTAL_FRAMES}). Truncating GIF."
+                    )
+                    total_frames_to_process = GIF_MAX_TOTAL_FRAMES
+
+                for i in range(total_frames_to_process):
+                    current_banner_frame = banner_frames_processed[
+                        i % len(banner_frames_processed)
+                    ]
                     current_avatar_frame = avatar_frames_processed[
                         i % len(avatar_frames_processed)
                     ]
-                    composite_frame = self._prepare_banner_frame(
-                        current_banner_frame
-                    ).copy()
+
+                    # Start with the prepared banner frame
+                    composite_frame = current_banner_frame.copy()
                     composite_frame.paste(misty_layer, (0, 0), misty_layer)
                     composite_frame.paste(border_overlay, (0, 0), border_overlay)
                     draw = ImageDraw.Draw(composite_frame)
@@ -357,32 +406,63 @@ class ImageProcessor:
                         display_date_text,
                     )
                     output_frames.append(composite_frame)
-                    banner_frame_duration = banner_durations[i % len(banner_durations)]
-                    avatar_frame_duration = avatar_durations[i % len(avatar_durations)]
-                    frame_durations.append(
-                        max(banner_frame_duration, avatar_frame_duration)
+                    # Use the fixed minimum duration for all frames
+                    frame_durations.append(GIF_MIN_FRAME_DURATION_MS)
+
+                if output_frames:
+                    output_buffer = io.BytesIO()
+                    try:
+                        # Use imageio.v3.imwrite for GIF.
+                        # Setting `fps` directly might be easier than `duration` for forced rate.
+                        # `palettesize` is already limited.
+                        # `optimize=True` for PIL internal optimization (if applicable through imageio).
+                        iio.imwrite(
+                            output_buffer,
+                            [
+                                f.convert("RGB") for f in output_frames
+                            ],  # imageio needs RGB for GIFs
+                            format="GIF",
+                            loop=0,  # Loop infinitely
+                            fps=GIF_MAX_FPS,  # Force max FPS
+                            # palettesize=64, # Your existing setting, keep it
+                            # subrectangles=True, # Potentially useful for smaller GIFs, but can be slow
+                            # optimize=True # Not a direct imwrite parameter for GIF, but handled by fps/palettesize
+                        )
+                        output_buffer.seek(0)
+                        return output_buffer
+                    except Exception as e:
+                        logging.error(f"Error saving GIF: {e}", exc_info=True)
+                        logging.warning(
+                            "Falling back to static image due to GIF saving error."
+                        )
+                        should_generate_gif = False  # Force static for the next step (if this fails, it will attempt PNG)
+                else:
+                    logging.warning(
+                        "No GIF frames generated. Falling back to static image."
                     )
+                    should_generate_gif = False  # Fallback to static if no frames
 
-                output_buffer = io.BytesIO()
-                iio.imwrite(
-                    output_buffer,
-                    [f.convert("RGB") for f in output_frames],
-                    format="GIF",
-                    loop=0,
-                    duration=frame_durations,
-                    palettesize=64,
-                )
-                output_buffer.seek(0)
-                return output_buffer
-            else:
+            # --- Static Image Handling (PNG) ---
+            if (
+                not should_generate_gif
+            ):  # This path is taken if GIF is disabled or failed
+                logging.info("Generating static profile image.")
+
+                # Ensure banner is processed for static display
                 banner_img_final = self._prepare_banner_frame(banner_img)
-                draw = ImageDraw.Draw(banner_img_final)
-                banner_img_final.paste(misty_layer, (0, 0), misty_layer)
-                banner_img_final.paste(border_overlay, (0, 0), border_overlay)
 
+                # Apply overlays
+                composite_img = banner_img_final.copy()
+                composite_img.paste(misty_layer, (0, 0), misty_layer)
+                composite_img.paste(border_overlay, (0, 0), border_overlay)
+                draw = ImageDraw.Draw(composite_img)
+
+                # Process avatar for static display (ensure it's not animated if the source was)
                 if avatar_is_animated:
-                    avatar_img_raw.seek(0)
-                    static_avatar_frame = avatar_img_raw.convert("RGBA")
+                    avatar_img_raw.seek(0)  # Reset pointer for animated image
+                    static_avatar_frame = avatar_img_raw.seek(
+                        0
+                    ) or avatar_img_raw.convert("RGBA")  # Get first frame as static
                     avatar_img_processed = self.round_avatar(
                         static_avatar_frame, AVATAR_TARGET_SIZE, AVATAR_BORDER_WIDTH
                     )
@@ -391,8 +471,6 @@ class ImageProcessor:
                         avatar_img_raw, AVATAR_TARGET_SIZE, AVATAR_BORDER_WIDTH
                     )
 
-                composite_img = banner_img_final.copy()
-                draw = ImageDraw.Draw(composite_img)
                 x_pos = 30
                 y_pos = (DISCORD_BANNER_HEIGHT - avatar_final_display_size) // 2
                 composite_img.paste(
@@ -408,12 +486,15 @@ class ImageProcessor:
                     display_date_text,
                 )
                 output_buffer = io.BytesIO()
-                composite_img.save(output_buffer, format="PNG")
+                # --- FORCED PNG COMPRESSION ---
+                composite_img.save(output_buffer, format="PNG", optimize=PNG_OPTIMIZE)
                 output_buffer.seek(0)
                 return output_buffer
-        except Exception as e:
-            logging.error(f"Error in process_image_sync: {e}")
-            import traceback
 
-            traceback.print_exc()
+            return None  # Should only be reached if both GIF and PNG generation failed or were skipped
+
+        except Exception as e:
+            logging.error(
+                f"Error in process_image_sync: {e}", exc_info=True
+            )  # Use exc_info=True for full traceback
             return None

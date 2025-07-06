@@ -16,7 +16,6 @@ from bot.utils.database import get_guild_data, update_guild_data
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-
 class SettingsModal(Modal):
     def __init__(
         self,
@@ -40,6 +39,8 @@ class SettingsModal(Modal):
             "clear_profile_banner": "確認清除用戶檔案橫幅圖片",
             "role_selection_channel": "設定身份組選擇頻道",
             "manage_selectable_roles": "管理可選身份組",
+            "dvc_trigger_channel": "設定觸發語音頻道",
+            "dvc_category": "設定語音頻道分類",
         }.get(target_type, "設定伺服器選項")
 
         super().__init__(title=modal_title)
@@ -52,10 +53,19 @@ class SettingsModal(Modal):
             "welcome_channel",
             "leave_channel",
             "role_selection_channel",
+            "dvc_trigger_channel",
+            "dvc_category",
         ]:
+            placeholder = (
+                "輸入語音頻道 ID (例如: 123456789012345678) 或 'None' 禁用"
+                if target_type == "dvc_trigger_channel"
+                else "輸入分類 ID (例如: 123456789012345678) 或 'None' 禁用"
+                if target_type == "dvc_category"
+                else "輸入文字頻道 ID (例如: 123456789012345678) 或 'None' 禁用"
+            )
             self.input = TextInput(
-                label="頻道 ID",
-                placeholder="輸入文字頻道的 ID (例如: 123456789012345678) 或 'None' 禁用",
+                label="頻道 ID" if target_type != "dvc_category" else "分類 ID",
+                placeholder=placeholder,
                 required=True,
                 style=discord.TextStyle.short,
                 default=current_value,
@@ -522,6 +532,58 @@ class SettingsModal(Modal):
                 response_embed.title = "✅ 設定成功"
                 response_embed.description = f"可選身份組已更新: {', '.join([interaction.guild.get_role(rid).mention for rid in valid_roles])}"
                 response_embed.color = discord.Color.green()
+        elif self.target_type == "dvc_trigger_channel":
+            channel_input = self.input.value.strip()
+            if channel_input.lower() == "none":
+                guild_data["dvc_trigger_channel_id"] = None
+                await update_guild_data(guild_id, guild_data)
+                response_embed.title = "✅ 設定成功"
+                response_embed.description = "動態語音頻道系統已禁用。"
+                response_embed.color = discord.Color.green()
+            elif not channel_input.isdigit():
+                response_embed.title = "❌ 操作失敗"
+                response_embed.description = "頻道 ID 必須是數字或 'None'。請輸入有效的語音頻道 ID 或 'None' 禁用。"
+                response_embed.color = discord.Color.red()
+            else:
+                channel = interaction.guild.get_channel(int(channel_input))
+                if not channel or not isinstance(channel, discord.VoiceChannel):
+                    response_embed.title = "❌ 操作失敗"
+                    response_embed.description = (
+                        "找不到指定的語音頻道。請確保 ID 正確且頻道為語音頻道。"
+                    )
+                    response_embed.color = discord.Color.red()
+                else:
+                    guild_data["dvc_trigger_channel_id"] = int(channel_input)
+                    await update_guild_data(guild_id, guild_data)
+                    response_embed.title = "✅ 設定成功"
+                    response_embed.description = f"觸發語音頻道已設定為: {channel.mention}"
+                    response_embed.color = discord.Color.green()
+        elif self.target_type == "dvc_category":
+            category_input = self.input.value.strip()
+            if category_input.lower() == "none":
+                guild_data["dvc_category_id"] = None
+                await update_guild_data(guild_id, guild_data)
+                response_embed.title = "✅ 設定成功"
+                response_embed.description = "語音頻道分類已清除（將使用伺服器預設位置）。"
+                response_embed.color = discord.Color.green()
+            elif not category_input.isdigit():
+                response_embed.title = "❌ 操作失敗"
+                response_embed.description = "分類 ID 必須是數字或 'None'。請輸入有效的分類 ID 或 'None' 禁用。"
+                response_embed.color = discord.Color.red()
+            else:
+                category = interaction.guild.get_channel(int(category_input))
+                if not category or not isinstance(category, discord.CategoryChannel):
+                    response_embed.title = "❌ 操作失敗"
+                    response_embed.description = (
+                        "找不到指定的分類。請確保 ID 正確且為分類頻道。"
+                    )
+                    response_embed.color = discord.Color.red()
+                else:
+                    guild_data["dvc_category_id"] = int(category_input)
+                    await update_guild_data(guild_id, guild_data)
+                    response_embed.title = "✅ 設定成功"
+                    response_embed.description = f"語音頻道分類已設定為: {category.name}"
+                    response_embed.color = discord.Color.green()
 
         response_embed.set_footer(
             text=f"由 {self.bot_user.display_name} 提供服務",
@@ -540,7 +602,6 @@ class SettingsModal(Modal):
             except Exception as e:
                 logger.error(f"Modal 後更新原始消息失敗: {e}")
 
-
 class SettingsView(View):
     def __init__(
         self,
@@ -551,7 +612,7 @@ class SettingsView(View):
         self.original_interaction = original_interaction
         self.bot_user = bot_user
         self.current_page = 0
-        self.max_pages = 4  # 5 pages (0 to 4)
+        self.max_pages = 5  # 6 pages (0 to 5)
         self.created_at = datetime.now(timezone.utc)  # Track creation time
         if original_interaction is None:
             logger.warning("SettingsView initialized with None original_interaction")
@@ -744,6 +805,30 @@ class SettingsView(View):
                 ),
             ],
             custom_id="ban_select",
+        )
+        return select
+
+    def dvc_select(self):
+        select = Select(
+            placeholder="選擇動態語音頻道設定...",
+            options=[
+                discord.SelectOption(
+                    label="設定觸發語音頻道",
+                    value="dvc_trigger_channel",
+                    description="設定用於創建臨時語音頻道的觸發頻道",
+                ),
+                discord.SelectOption(
+                    label="設定語音頻道分類",
+                    value="dvc_category",
+                    description="設定臨時語音頻道的分類（可選）",
+                ),
+                discord.SelectOption(
+                    label="禁用動態語音頻道系統",
+                    value="disable_dvc_system",
+                    description="禁用動態語音頻道功能並清除設定",
+                ),
+            ],
+            custom_id="dvc_select",
         )
         return select
 
@@ -1171,6 +1256,55 @@ class SettingsView(View):
                 )
             )
             return
+        elif selected_value == "dvc_trigger_channel":
+            current_value = (
+                str(guild_data.get("dvc_trigger_channel_id", ""))
+                if guild_data.get("dvc_trigger_channel_id")
+                else ""
+            )
+            await interaction.response.send_modal(
+                SettingsModal(
+                    "dvc_trigger_channel",
+                    current_value,
+                    self.original_interaction,
+                    self.bot_user,
+                    parent_view=self,
+                )
+            )
+            return
+        elif selected_value == "dvc_category":
+            current_value = (
+                str(guild_data.get("dvc_category_id", ""))
+                if guild_data.get("dvc_category_id")
+                else ""
+            )
+            await interaction.response.send_modal(
+                SettingsModal(
+                    "dvc_category",
+                    current_value,
+                    self.original_interaction,
+                    self.bot_user,
+                    parent_view=self,
+                )
+            )
+            return
+        elif selected_value == "disable_dvc_system":
+            await interaction.response.defer(ephemeral=True)
+            guild_data["dvc_trigger_channel_id"] = None
+            guild_data["dvc_category_id"] = None
+            await update_guild_data(guild_id, guild_data)
+            response_embed = discord.Embed(
+                title="✅ 設定已更新",
+                description="動態語音頻道系統已禁用。",
+                color=discord.Color.green(),
+            )
+            response_embed.set_footer(
+                text=f"由 {self.bot_user.display_name} 提供服務",
+                icon_url=self.bot_user.display_avatar.url,
+            )
+            await interaction.followup.send(embed=response_embed, ephemeral=True)
+            await self._update_original_command_message(interaction, guild_id)
+            return
 
         logger.debug(f"Updating view after toggle selection: {selected_value}")
         await self._update_original_command_message(interaction, guild_id)
@@ -1329,7 +1463,7 @@ class SettingsView(View):
             if welcome_custom_banner_url:
                 embed.set_image(url=welcome_custom_banner_url)
             embed.set_footer(
-                text=f"由 {bot_user.display_name} 提供服務 | 頁面 1/5",
+                text=f"由 {bot_user.display_name} 提供服務 | 頁面 1/6",
                 icon_url=bot_user.display_avatar.url,
             )
             select = view.welcome_select()
@@ -1361,7 +1495,7 @@ class SettingsView(View):
             if leave_custom_banner_url:
                 embed.set_image(url=leave_custom_banner_url)
             embed.set_footer(
-                text=f"由 {bot_user.display_name} 提供服務 | 頁面 2/5",
+                text=f"由 {bot_user.display_name} 提供服務 | 頁面 2/6",
                 icon_url=bot_user.display_avatar.url,
             )
             select = view.leave_select()
@@ -1384,7 +1518,7 @@ class SettingsView(View):
             if custom_banner_url:
                 embed.set_image(url=custom_banner_url)
             embed.set_footer(
-                text=f"由 {bot_user.display_name} 提供服務 | 頁面 3/5",
+                text=f"由 {bot_user.display_name} 提供服務 | 頁面 3/6",
                 icon_url=bot_user.display_avatar.url,
             )
             select = view.profile_select()
@@ -1413,7 +1547,7 @@ class SettingsView(View):
             )
             embed.add_field(name="目前設定", value=roles_field, inline=False)
             embed.set_footer(
-                text=f"由 {bot_user.display_name} 提供服務 | 頁面 4/5",
+                text=f"由 {bot_user.display_name} 提供服務 | 頁面 4/6",
                 icon_url=bot_user.display_avatar.url,
             )
             select = view.role_select()
@@ -1442,10 +1576,39 @@ class SettingsView(View):
             )
             embed.add_field(name="目前設定", value=ban_field, inline=False)
             embed.set_footer(
-                text=f"由 {bot_user.display_name} 提供服務 | 頁面 5/5",
+                text=f"由 {bot_user.display_name} 提供服務 | 頁面 5/6",
                 icon_url=bot_user.display_avatar.url,
             )
             select = view.ban_select()
+            view.add_item(select)
+        elif view.current_page == 5:
+            embed = discord.Embed(
+                title="🔊 動態語音頻道設定",
+                description="使用下方的下拉選單來設定動態語音頻道功能。",
+                color=discord.Color.blue(),
+            )
+            dvc_trigger_channel_id = guild_data.get("dvc_trigger_channel_id")
+            dvc_category_id = guild_data.get("dvc_category_id")
+            trigger_channel = (
+                self.original_interaction.guild.get_channel(dvc_trigger_channel_id)
+                if dvc_trigger_channel_id and self.original_interaction.guild
+                else None
+            )
+            category = (
+                self.original_interaction.guild.get_channel(dvc_category_id)
+                if dvc_category_id and self.original_interaction.guild
+                else None
+            )
+            dvc_field = (
+                f"**觸發語音頻道**: {trigger_channel.mention if trigger_channel else '未設定'}\n"
+                f"**語音頻道分類**: {category.name if category else '未設定（使用伺服器預設位置）'}"
+            )
+            embed.add_field(name="目前設定", value=dvc_field, inline=False)
+            embed.set_footer(
+                text=f"由 {bot_user.display_name} 提供服務 | 頁面 6/6",
+                icon_url=bot_user.display_avatar.url,
+            )
+            select = view.dvc_select()
             view.add_item(select)
         else:
             # Fallback for invalid page
@@ -1461,14 +1624,13 @@ class SettingsView(View):
 
         return embed, view
 
-
 class SettingsManager(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     @app_commands.command(
         name="panel",
-        description="管理伺服器設定，包括歡迎訊息、離開訊息、用戶檔案、身份組選擇和封禁管理",
+        description="管理伺服器設定，包括歡迎訊息、離開訊息、用戶檔案、身份組選擇、封禁管理和動態語音頻道",
     )
     @app_commands.default_permissions(manage_guild=True)
     async def set_server_settings(self, interaction: discord.Interaction):
@@ -1482,7 +1644,6 @@ class SettingsManager(commands.Cog):
         view = SettingsView(original_interaction=interaction, bot_user=self.bot.user)
         embed, view = view._create_current_page(current_guild_data, self.bot.user)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(SettingsManager(bot))

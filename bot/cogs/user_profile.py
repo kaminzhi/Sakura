@@ -1,4 +1,3 @@
-# bot/cogs/user_profile.py
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -12,6 +11,9 @@ from bot.utils.database import get_guild_data
 from bot.utils.image_processing import ImageProcessor
 
 warnings.filterwarnings("ignore", category=UserWarning, module="imageio.plugins.pillow")
+
+# Define a maximum file size limit (e.g., 8 MB for general Discord limits)
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 8 MB
 
 
 class UserProfile(commands.Cog):
@@ -93,19 +95,55 @@ class UserProfile(commands.Cog):
             member_to_use.name,
             member_to_use.discriminator,
             created_at_str,
-            generate_gif_enabled,
+            generate_gif_enabled,  # Try to generate GIF if enabled
         )
 
         file = None
         if processed_image_buffer:
-            is_gif = processed_image_buffer.getvalue()[:4] == b"GIF8"
-            filename = "user_profile.gif" if is_gif else "user_profile.png"
-            file = discord.File(processed_image_buffer, filename=filename)
-            logging.info(f"Debug: Output file prepared: {filename}")
-        else:
-            logging.error(
-                "Debug: processed_image_buffer is None. File will not be attached."
-            )
+            # Check file size before sending
+            file_size = processed_image_buffer.getbuffer().nbytes
+            if file_size > MAX_FILE_SIZE_BYTES:
+                logging.warning(
+                    f"Generated image is too large ({file_size / (1024 * 1024):.2f} MB). Attempting to generate a static image instead."
+                )
+                # If GIF generation was enabled, try generating a PNG instead
+                if (
+                    generate_gif_enabled and avatar_data and banner_data
+                ):  # Ensure we have data to regenerate
+                    processed_image_buffer = await asyncio.to_thread(
+                        self.image_processor.process_image_sync,
+                        banner_data,
+                        avatar_data,
+                        member_to_use.display_name,
+                        member_to_use.name,
+                        member_to_use.discriminator,
+                        created_at_str,
+                        False,  # Force static image (PNG)
+                    )
+                    if (
+                        processed_image_buffer
+                        and processed_image_buffer.getbuffer().nbytes
+                        > MAX_FILE_SIZE_BYTES
+                    ):
+                        # Still too large even as PNG, or if it was already a PNG and too large
+                        logging.error(
+                            f"Static image is still too large ({processed_image_buffer.getbuffer().nbytes / (1024 * 1024):.2f} MB). Cannot attach file."
+                        )
+                        processed_image_buffer = None  # Don't attach file
+                else:
+                    processed_image_buffer = (
+                        None  # Can't regenerate, or already static and too large
+                    )
+
+            if processed_image_buffer:
+                is_gif = processed_image_buffer.getvalue()[:4] == b"GIF8"
+                filename = "user_profile.gif" if is_gif else "user_profile.png"
+                file = discord.File(processed_image_buffer, filename=filename)
+                logging.info(f"Debug: Output file prepared: {filename}")
+            else:
+                logging.error(
+                    "Debug: processed_image_buffer is None or too large. File will not be attached."
+                )
 
         embed = discord.Embed(
             title=f"**{member_to_use.display_name}** 的個人資訊",
@@ -130,7 +168,7 @@ class UserProfile(commands.Cog):
         else:
             embed.add_field(
                 name="⚠️ **無法生成個人橫幅**",
-                value="請確保用戶有設定橫幅，或伺服器有設定自定義橫幅。若無，將使用頭像作為替代橫幅。",
+                value="請確保用戶有設定橫幅，或伺服器有設定自定義橫幅。若無，將使用頭像作為替代橫幅。若生成的圖片過大，也將無法顯示。",
                 inline=False,
             )
 
@@ -141,6 +179,11 @@ class UserProfile(commands.Cog):
         embed.add_field(name="✨ **此帳號的類型**", value=user_type, inline=True)
         embed.add_field(name="\u200b", value="\u200b", inline=True)
 
+        created_at_str = (
+            member_to_use.created_at.strftime("%Y/%m/%d %H:%M")
+            if member_to_use.created_at
+            else "未知日期"
+        )
         embed.add_field(name="📅 **加入Discord於**", value=created_at_str, inline=True)
         if isinstance(member_to_use, discord.Member) and guild:
             joined_at = (
