@@ -68,9 +68,9 @@ async def on_ready():
 
     try:
         await mongo_client.admin.command("ping")
-        logger.info("✅ MongoDB Connection Sucess!")
+        logger.info("MongoDB Connection Sucess!")
     except Exception as e:
-        logger.error(f"❌ MongoDB Connection Fail: {e}")
+        logger.error(f"MongoDB Connection Fail: {e}")
 
     # 自動載入 bot/cogs 下所有 cogs
     cogs_path = Path(__file__).parent / "cogs"
@@ -84,21 +84,20 @@ async def on_ready():
         module_name = ".".join(relative.with_suffix("").parts)
         try:
             await bot.load_extension(module_name)
-            logger.info(f"✅ 成功載入模組：{module_name}")
+            logger.info(f"成功載入模組：{module_name}")
             loaded_count += 1
         except Exception as e:
-            logger.error(f"❌ 載入模組 {module_name} 失敗：{e}")
+            logger.error(f"載入模組 {module_name} 失敗：{e}")
             failed_count += 1
 
-    logger.info(f"📦 共載入 {loaded_count} 個模組，失敗 {failed_count} 個。")
+    logger.info(f"共載入 {loaded_count} 個模組，失敗 {failed_count} 個。")
 
-    # 指令同步邏輯
     if SYNC_COMMANDS_GLOBAL:
         try:
             commands = await bot.tree.sync()
-            logger.info(f"✅ 已全局同步 {len(commands)} 個指令。")
+            logger.info(f"已全局同步 {len(commands)} 個指令。")
         except Exception as e:
-            logger.error(f"❌ 全域指令同步時發生錯誤：{e}")
+            logger.error(f"全域指令同步時發生錯誤：{e}")
     else:
         guild_ids_to_sync = []
         if SERVER_GUILD_ID:
@@ -117,26 +116,26 @@ async def on_ready():
                     try:
                         commands = await bot.tree.sync(guild=guild)
                         logger.info(
-                            f"✅ 已在伺服器 {guild.name} ({guild.id}) 強制同步 {len(commands)} 個指令。"
+                            f"已在伺服器 {guild.name} ({guild.id}) 強制同步 {len(commands)} 個指令。"
                         )
                     except discord.errors.Forbidden:
                         logger.error(
-                            f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生 Forbidden 錯誤。請檢查 Bot 是否擁有 '應用程式指令' 權限。"
+                            f"在伺服器 {guild.name} ({guild.id}) 同步指令時發生 Forbidden 錯誤。請檢查 Bot 是否擁有 '應用程式指令' 權限。"
                         )
                     except Exception as e:
                         logger.error(
-                            f"❌ 在伺服器 {guild.name} ({guild.id}) 同步指令時發生錯誤：{e}"
+                            f"在伺服器 {guild.name} ({guild.id}) 同步指令時發生錯誤：{e}"
                         )
                 else:
                     logger.warning(
-                        f"ℹ️ 無法找到 ID 為 {guild_id} 的伺服器，跳過指令同步。"
+                        f"無法找到 ID 為 {guild_id} 的伺服器，跳過指令同步。"
                     )
 
     activity = get_activity(ACTIVITY_TYPE, ACTIVITY_TEXT, ACTIVITY_URL)
     status = status_map.get(BOT_STATUS)
     await bot.change_presence(status=status, activity=activity)
     logger.info(
-        f"✅ 狀態已設置為 {BOT_STATUS}，類型為 {ACTIVITY_TYPE}, 文字為 {ACTIVITY_TEXT}。"
+        f"狀態已設置為 {BOT_STATUS}，類型為 {ACTIVITY_TYPE}, 文字為 {ACTIVITY_TEXT}。"
     )
 
 

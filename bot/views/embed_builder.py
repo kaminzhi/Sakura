@@ -8,7 +8,7 @@ def build_settings_embed(
     allowed_channels: list[int],
 ) -> discord.Embed:
     embed = discord.Embed(
-        title=f"🔧 連結修正設定 - {guild_name}", color=discord.Color.blurple()
+        title=f"連結修正設定 - {guild_name}", color=discord.Color.blurple()
     )
     embed.add_field(
         name="自動修正", value="✅ 啟用" if auto_link_fix else "❌ 關閉", inline=False
